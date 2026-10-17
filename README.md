@@ -1,6 +1,13 @@
-# spark-joy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" width="240" alt="A drawer of neatly folded diffs, one sparking joy">
+  </picture>
+</p>
 
-Skill for making PR reviews spark more joy.
+<h1 align="center">spark-joy</h1>
+
+<p align="center"><em>Make PRs spark joy again.</em></p>
 
 AI-assisted pull requests are often thousands of lines long, too big to review properly in one go. spark-joy has Claude break a big PR or MR into small, ordered chunks, then opens a local app where you review them one batch at a time. You tick chunks off, leave notes, and finish with a summary of everything the PR changes.
 
