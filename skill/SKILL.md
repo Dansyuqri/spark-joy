@@ -7,7 +7,7 @@ description: Break a large PR/MR into small, ordered chunks and open a local app
 
 You group a branch's diff into reviewable chunks; the `spark-joy` CLI does the rest. The reader is a tired human. **Every word you write is load on them. Be terse.**
 
-Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g github:dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
+Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
 
 ## 1. Extract
 

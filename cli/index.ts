@@ -1,4 +1,4 @@
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,7 @@ Commands:
 
 Common options:
   --run <name>          Run to use (default: the current branch's run)
+  -v, --version         Print the installed version
   -h, --help            Show this help
 `;
 
@@ -59,9 +60,15 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       stdout: { type: "boolean" },
       project: { type: "boolean" },
       help: { type: "boolean", short: "h" },
+      version: { type: "boolean", short: "v" },
     },
   });
   const [cmd, ...rest] = positionals;
+  if (values.version) {
+    const pkg = JSON.parse(await readFile(join(PKG_ROOT, "package.json"), "utf8"));
+    console.log(pkg.version);
+    return 0;
+  }
   if (!cmd || values.help) {
     console.log(HELP);
     return cmd || values.help ? 0 : 1;

@@ -37,7 +37,7 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 Requires Node 22 or newer and git.
 
 ```sh
-npm install -g github:dansyuqri/spark-joy
+npm install -g @dansyuqri/spark-joy
 spark-joy install-skill            # or --project to install into ./.claude/skills
 ```
 
@@ -92,3 +92,11 @@ Layout:
 - `src/`: the React review app.
 - `skill/`: the Claude Code skill.
 - `test/`: Vitest, with a fixture git repo.
+
+## Releasing
+
+Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored anywhere.
+
+1. **First release only, by hand.** npm needs the package to exist before a trusted publisher can be added: `npm login`, then `npm publish`.
+2. **Once, on npmjs.com:** open the package's Settings → Trusted publishing → GitHub Actions. Enter owner `Dansyuqri`, repository `spark-joy` and workflow `release.yml` (case-sensitive); leave the environment blank.
+3. **Every release after that:** `npm version patch` (or `minor`/`major`), then `git push --follow-tags`. The `v*` tag runs `.github/workflows/release.yml`, which tests and publishes with provenance.

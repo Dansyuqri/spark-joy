@@ -1,19 +1,43 @@
 {
-  "name": "spark-joy",
+  "name": "@dansyuqri/spark-joy",
   "version": "0.1.0",
   "description": "Break a huge PR into reviewable chunks and review it batch by batch in a local app.",
-  "type": "module",
+  "keywords": [
+    "code-review",
+    "pull-request",
+    "merge-request",
+    "claude-code",
+    "skill",
+    "diff",
+    "github",
+    "gitlab"
+  ],
+  "homepage": "https://github.com/Dansyuqri/spark-joy#readme",
+  "bugs": {
+    "url": "https://github.com/Dansyuqri/spark-joy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dansyuqri/spark-joy.git"
+  },
   "license": "MIT",
+  "author": "dansyuqri",
+  "type": "module",
   "bin": {
     "spark-joy": "bin/spark-joy.mjs"
   },
   "files": [
     "bin",
     "dist",
-    "skill"
+    "skill",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "npm run build:cli && npm run build:app",
@@ -23,7 +47,8 @@
     "dev:app": "vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "npm run build:app && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "npm run build:app && vitest run --config vitest.e2e.config.ts",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "dependencies": {
     "zod": "^3.23.8"
