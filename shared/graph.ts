@@ -83,7 +83,28 @@ export function chunkGraph(view: StrategyView, links: readonly Link[]): Graph {
     if (user === undefined || definer === undefined || user === definer) continue;
     addEdge(edges, `c${definer}`, `c${user}`, "link");
   }
-  return { nodes, edges: [...edges.values()] };
+  return { nodes, edges: reduce([...edges.values()]) };
+}
+
+// Transitive reduction: drop u→v when another path already leads from u to v.
+// Keeps the overview readable; the dropped links still show when zoomed in.
+function reduce(edges: GraphEdge[]): GraphEdge[] {
+  const out = new Map<string, string[]>();
+  for (const e of edges) out.set(e.from, [...(out.get(e.from) ?? []), e.to]);
+  const reachable = (from: string, to: string, skip: GraphEdge): boolean => {
+    const seen = new Set<string>();
+    const stack = (out.get(from) ?? []).filter((n) => !(from === skip.from && n === skip.to));
+    while (stack.length) {
+      const n = stack.pop()!;
+      if (n === to) return true;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      stack.push(...(out.get(n) ?? []));
+    }
+    return false;
+  };
+  const kept = edges.filter((e) => !reachable(e.from, e.to, e));
+  return kept.length === edges.length ? kept : reduce(kept);
 }
 
 export function fileGraph(current: ChunkView, view: StrategyView, links: readonly Link[]): Graph {

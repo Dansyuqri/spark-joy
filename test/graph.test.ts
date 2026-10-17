@@ -83,3 +83,23 @@ describe("fileGraph", () => {
     expect(g.edges.find((e) => e.to === "n:app.ts")).toMatchObject({ from: "f:parse.ts", label: "RawHunk +2" });
   });
 });
+
+describe("chunkGraph reduction", () => {
+  it("drops edges implied by a longer path", () => {
+    const p = Plan.parse({
+      strategies: [
+        {
+          id: "layers",
+          chunks: [
+            { id: "a", title: "A", intent: "x", hunks: ["h1"] },
+            { id: "b", title: "B", intent: "x", hunks: ["h2", "h3"], dependsOn: ["a"] },
+            { id: "c", title: "C", intent: "x", hunks: ["h4", "h5"], dependsOn: ["b"] },
+          ],
+        },
+      ],
+    });
+    const v = strategyView(p, hunks, "layers")!;
+    const g = chunkGraph(v, [{ from: "h4", to: "h1", symbols: ["Hunk"] }]);
+    expect(g.edges.map((e) => `${e.from}>${e.to}`).sort()).toEqual(["c0>c1", "c1>c2"]);
+  });
+});

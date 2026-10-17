@@ -101,8 +101,9 @@ export function MapPage({ data, plan, view, state, at }: Props) {
     const el = box.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
-    const k = Math.min(1.25, (width - 40) / placed.width, (height - 40) / placed.height);
-    setT({ k, x: (width - placed.width * k) / 2, y: (height - placed.height * k) / 2 });
+    // Fit, but never so small that titles can't be read; pan for the rest.
+    const k = Math.max(0.8, Math.min(1.25, (width - 40) / placed.width, (height - 40) / placed.height));
+    setT({ k, x: Math.max(20, (width - placed.width * k) / 2), y: Math.max(20, (height - placed.height * k) / 2) });
   }, [placed]);
 
   useEffect(() => {
@@ -147,7 +148,10 @@ export function MapPage({ data, plan, view, state, at }: Props) {
     else if (n.chunk !== undefined) location.hash = `#/map/${n.chunk + 1}`;
   };
 
+  // The node under the cursor when zooming is gone afterwards, and won't get
+  // a mouseleave; drop the highlight with the level.
   const [hover, setHover] = useState<string>();
+  useEffect(() => setHover(undefined), [graph]);
   const touches = (e: GraphEdge) => !hover || e.from === hover || e.to === hover;
 
   return (
