@@ -29,7 +29,7 @@
   "files": [
     "bin",
     "dist",
-    "skill",
+    "plugin/skills",
     "README.md",
     "LICENSE"
   ],

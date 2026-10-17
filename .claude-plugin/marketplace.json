@@ -1,0 +1,12 @@
+{
+  "name": "spark-joy",
+  "description": "Review huge PRs in small, ordered chunks.",
+  "owner": { "name": "Dansyuqri", "url": "https://github.com/Dansyuqri" },
+  "plugins": [
+    {
+      "name": "spark-joy",
+      "source": "./plugin",
+      "description": "Break a huge PR into small, ordered chunks and review them one at a time in a local app."
+    }
+  ]
+}
