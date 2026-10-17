@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Hunk, Meta, ReviewState, emptyState } from "../../shared/schema";
+import { AutoLink, Hunk, Meta, ReviewState, emptyState } from "../../shared/schema";
 import { z } from "zod";
 
 export const RUNS_DIR = ".spark-joy";
@@ -15,6 +15,7 @@ export interface RunPaths {
   plan: string;
   state: string;
   review: string;
+  links: string;
 }
 
 export function runPaths(root: string, name: string): RunPaths {
@@ -27,6 +28,7 @@ export function runPaths(root: string, name: string): RunPaths {
     plan: join(dir, "plan.json"),
     state: join(dir, "review-state.json"),
     review: join(dir, "review.md"),
+    links: join(dir, "links.json"),
   };
 }
 
@@ -85,6 +87,12 @@ export async function readPlanRaw(p: RunPaths): Promise<unknown | undefined> {
   } catch (e) {
     throw new Error(`plan.json is not valid JSON: ${(e as Error).message}`);
   }
+}
+
+// Runs extracted before links existed have no file; treat that as no links.
+export async function readLinks(p: RunPaths): Promise<AutoLink[]> {
+  if (!(await exists(p.links))) return [];
+  return z.array(AutoLink).parse(await readJson(p.links));
 }
 
 export async function readState(p: RunPaths): Promise<ReviewState> {

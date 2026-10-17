@@ -1,5 +1,5 @@
 import type { Issue } from "../shared/validate";
-import type { Hunk, Meta, Plan, ReviewState } from "../shared/schema";
+import type { AutoLink, Hunk, Meta, Plan, ReviewState } from "../shared/schema";
 
 export interface RunData {
   meta: Meta;
@@ -7,6 +7,7 @@ export interface RunData {
   plan?: Plan;
   issues: Issue[];
   hasPlan: boolean;
+  links: AutoLink[];
   state: ReviewState;
 }
 

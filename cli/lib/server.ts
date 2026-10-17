@@ -4,7 +4,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { ReviewState } from "../../shared/schema";
 import { validatePlan } from "../../shared/validate";
 import { exportMarkdown } from "./export";
-import { readHunks, readMeta, readPlanRaw, readState, writeJson, type RunPaths } from "./runs";
+import { readHunks, readLinks, readMeta, readPlanRaw, readState, writeJson, type RunPaths } from "./runs";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -36,7 +36,13 @@ function send(res: ServerResponse, status: number, data: unknown) {
 // Everything the app needs, read fresh from disk on each request so a plan
 // rewritten by Claude shows up on the next reload.
 async function loadRun(paths: RunPaths) {
-  const [meta, hunks, raw, state] = await Promise.all([readMeta(paths), readHunks(paths), readPlanRaw(paths), readState(paths)]);
+  const [meta, hunks, raw, state, links] = await Promise.all([
+    readMeta(paths),
+    readHunks(paths),
+    readPlanRaw(paths),
+    readState(paths),
+    readLinks(paths),
+  ]);
   const validation = raw === undefined ? undefined : validatePlan(raw, hunks);
   return {
     meta,
@@ -44,6 +50,7 @@ async function loadRun(paths: RunPaths) {
     plan: validation?.plan,
     issues: validation?.issues ?? [],
     hasPlan: raw !== undefined,
+    links,
     state,
   };
 }

@@ -70,6 +70,17 @@ describe("review app", () => {
     await page.locator(".line-note .text", { hasText: "Why this value?" }).waitFor();
     await page.locator(".progress span", { hasText: "1/3" }).waitFor();
 
+    // Map: chunk graph, zoom into a chunk's files, open one in review.
+    await page.getByRole("link", { name: "Map" }).click();
+    await page.getByRole("button", { name: "1 Core" }).click();
+    await page.locator(".crumbs", { hasText: "1 Core" }).waitFor();
+    const fileNode = page.locator(".node.file").first();
+    const file = await fileNode.getAttribute("aria-label");
+    await fileNode.click();
+    await page.waitForURL((u) => u.hash.startsWith("#/review/1?file="));
+    expect(decodeURIComponent(new URL(page.url()).hash.split("file=")[1]!)).toBe(file);
+    await page.getByRole("heading", { name: /Core/ }).waitFor();
+
     // Summary and export.
     await page.getByRole("link", { name: "Summary" }).click();
     await page.getByRole("heading", { name: "Features" }).waitFor();

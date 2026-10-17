@@ -570,3 +570,116 @@ tr.note-row td {
     display: none;
   }
 }
+
+/* Map */
+.file {
+  scroll-margin-top: 64px;
+}
+.map-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 53px);
+}
+.crumbs {
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.map-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.map-canvas:active {
+  cursor: grabbing;
+}
+.empty-map {
+  padding: 20px;
+}
+.zoom-in {
+  animation: zoom-in 0.22s ease-out;
+  transform-box: fill-box;
+}
+@keyframes zoom-in {
+  from {
+    opacity: 0;
+  }
+}
+.node {
+  cursor: pointer;
+}
+.node rect {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.node:hover rect {
+  stroke: var(--accent);
+}
+.node.neighbour rect {
+  fill: var(--bg);
+  stroke-dasharray: 4 3;
+}
+.node.neighbour text {
+  opacity: 0.7;
+}
+.node text {
+  fill: var(--ink);
+  font-size: 13px;
+}
+.node .title {
+  font-weight: 600;
+}
+.node.file .title {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.node .n {
+  fill: var(--muted);
+  font-weight: 400;
+}
+.node .meta {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.node .status.done {
+  color: var(--done);
+}
+.node .status.partial {
+  color: var(--partial);
+}
+.node .status.todo {
+  color: var(--todo);
+}
+.node .risk-high {
+  fill: var(--del-ink);
+}
+.node .risk-med {
+  fill: var(--partial);
+}
+.edge path {
+  fill: none;
+  stroke: var(--muted);
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.edge.link path {
+  stroke-dasharray: 5 4;
+}
+.edge.faded {
+  opacity: 0.15;
+}
+.arrowhead {
+  fill: var(--muted);
+}
+.edge-label rect {
+  fill: var(--bg);
+  stroke: var(--line);
+}
+.edge-label text {
+  fill: var(--ink);
+  font-size: 11px;
+}

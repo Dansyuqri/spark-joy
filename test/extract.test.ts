@@ -5,7 +5,7 @@ import { main } from "../cli/index";
 import { extract } from "../cli/lib/extract";
 import { exportMarkdown } from "../cli/lib/export";
 import { expandIds, outline } from "../cli/lib/format";
-import { readHunks, readMeta, readState, runPaths, writeJson } from "../cli/lib/runs";
+import { readHunks, readLinks, readMeta, readState, runPaths, writeJson } from "../cli/lib/runs";
 import { setReviewed, strategyView } from "../shared/derive";
 import { emptyState, type Hunk, type ReviewState } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
@@ -41,6 +41,18 @@ describe("extract", () => {
     expect(byFile("docs/guide.md")[0]!.flags).toEqual(["docs", "whitespace-only"]);
     expect(byFile("test/math.test.ts")[0]!.flags).toEqual(["test"]);
     expect(byFile("src/math.ts")).toHaveLength(2);
+  });
+
+  it("links uses to the changed definitions they import", async () => {
+    const links = await readLinks(runPaths(root, "feature"));
+    const id = (file: string, text: string) => hunks.find((h) => h.file === file && h.lines.some((l) => l.includes(text)))!.id;
+    expect(links).toEqual(
+      expect.arrayContaining([
+        { from: id("src/use.ts", "f25"), to: id("src/math.ts", "return -25"), symbols: ["f25"] },
+      ]),
+    );
+    // Names under 3 characters (f3) are too short to link reliably.
+    expect(links.some((l) => l.symbols.includes("f3"))).toBe(false);
   });
 
   it("splits the large new file into numbered pieces", () => {

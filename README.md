@@ -22,6 +22,7 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 - **Mechanical changes are separated.** Lockfiles, generated files, binaries, renames and whitespace-only changes go into a collapsed *skim* section.
 - **Chunks stay small.** The target is 100–300 changed lines and validation warns above 400. Large hunks are split at function boundaries so they can go into different chunks.
 - **Progress survives new commits.** Review state is stored by hunk content, so after a push you re-extract and only new or changed hunks need another look.
+- **Map.** Chunks as a graph. Click one to see how its files' diffs link; click a file to review it.
 - **Summary.** A *What this PR does* list ties each feature to the chunks that implement it and shows how much of each has been reviewed.
 
 ## Install
@@ -56,6 +57,7 @@ In the app:
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
+| `spark-joy links` | Cross-file links: which hunk uses a name another defines |
 | `spark-joy validate [--json]` | Check `plan.json` against the hunks |
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |

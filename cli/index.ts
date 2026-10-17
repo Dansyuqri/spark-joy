@@ -6,9 +6,9 @@ import { parseArgs } from "node:util";
 import { validatePlan } from "../shared/validate";
 import { extract } from "./lib/extract";
 import { exportMarkdown } from "./lib/export";
-import { describeMeta, expandIds, outline, showFile, showHunks } from "./lib/format";
+import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
-import { readHunks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
+import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
 import { serve } from "./lib/server";
 
 const PKG_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -24,6 +24,7 @@ Commands:
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
       --file <path>     Print every hunk of a file
+  links                 Cross-file links: which hunk uses a name another hunk defines
   validate              Check plan.json against the hunks
       --json            Machine-readable output
   serve                 Open the review app
@@ -92,6 +93,12 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const ids = values.file ? showFile(hunks, values.file) : expandIds(rest, hunks);
       if (!ids.length) throw new Error(values.file ? `no hunks in ${values.file}` : "pass hunk ids, e.g. `show h001 h004..h009`");
       console.log(showHunks(hunks, ids));
+      return 0;
+    }
+
+    case "links": {
+      const p = await run(cwd, values.run);
+      console.log(formatLinks(await readHunks(p), await readLinks(p)));
       return 0;
     }
 

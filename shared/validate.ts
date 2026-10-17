@@ -17,6 +17,7 @@ export const BUDGET = {
   focusWords: 8,
   featureTitle: 4,
   featureDescription: 8,
+  linkLabel: 3,
 } as const;
 
 // Phrases that add words without adding meaning: contrasts with what the code
@@ -136,6 +137,13 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     if (missing.length)
       error(where, `hunks not in any chunk or skim: ${missing.map(describe).join(", ")}`);
   }
+
+  plan.links.forEach((l, i) => {
+    const lw = `link ${i + 1} (${l.from}→${l.to})`;
+    for (const id of [l.from, l.to]) if (!byId.has(id)) error(lw, `unknown hunk id ${id}`);
+    if (l.from === l.to) error(lw, "links a hunk to itself");
+    tooLong(lw, "label", l.label, BUDGET.linkLabel);
+  });
 
   if (plan.features.length === 0) warn("features", "no features; the summary page will be empty");
   const inFeature = new Set<string>();

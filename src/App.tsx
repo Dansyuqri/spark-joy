@@ -2,18 +2,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { progress, strategyView } from "../shared/derive";
 import type { ReviewState } from "../shared/schema";
 import { loadRun, saveState, type RunData } from "./api";
+import { MapPage } from "./components/MapPage";
 import { PlanPage } from "./components/PlanPage";
 import { ReviewPage } from "./components/ReviewPage";
 import { SummaryPage } from "./components/SummaryPage";
 import { Issues } from "./components/bits";
 
-export type Route = { page: "plan" } | { page: "review"; chunk: number | "skim" } | { page: "summary" };
+export type Route =
+  | { page: "plan" }
+  | { page: "map"; chunk?: number }
+  | { page: "review"; chunk: number | "skim"; file?: string }
+  | { page: "summary" };
+
+const chunkArg = (arg: string | undefined) => Math.max(0, Number(arg ?? 1) - 1) || 0;
 
 function parseRoute(hash: string): Route | undefined {
-  const [page, arg] = hash.replace(/^#\/?/, "").split("/");
+  const [path = "", query = ""] = hash.replace(/^#\/?/, "").split("?");
+  const [page, arg] = path.split("/");
   if (page === "plan") return { page: "plan" };
   if (page === "summary") return { page: "summary" };
-  if (page === "review") return { page: "review", chunk: arg === "skim" ? "skim" : Math.max(0, Number(arg ?? 1) - 1) || 0 };
+  if (page === "map") return { page: "map", chunk: arg ? chunkArg(arg) : undefined };
+  if (page === "review")
+    return {
+      page: "review",
+      chunk: arg === "skim" ? "skim" : chunkArg(arg),
+      file: new URLSearchParams(query).get("file") ?? undefined,
+    };
   return undefined;
 }
 
@@ -125,6 +139,9 @@ export function App() {
           <a className={current.page === "plan" ? "on" : ""} href="#/plan">
             Plan
           </a>
+          <a className={current.page === "map" ? "on" : ""} href="#/map">
+            Map
+          </a>
           <a className={current.page === "review" ? "on" : ""} href={routeHref({ page: "review", chunk: 0 })}>
             Review
           </a>
@@ -157,10 +174,20 @@ export function App() {
         </div>
       ) : current.page === "plan" ? (
         <PlanPage data={data} plan={data.plan} state={state} update={update} />
+      ) : current.page === "map" ? (
+        <MapPage data={data} plan={data.plan} view={view} state={state} at={current.chunk} />
       ) : current.page === "summary" ? (
         <SummaryPage data={data} plan={data.plan} view={view} state={state} flush={flush} />
       ) : (
-        <ReviewPage data={data} plan={data.plan} view={view} state={state} update={update} at={current.chunk} />
+        <ReviewPage
+          data={data}
+          plan={data.plan}
+          view={view}
+          state={state}
+          update={update}
+          at={current.chunk}
+          file={current.file}
+        />
       )}
     </div>
   );

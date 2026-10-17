@@ -86,12 +86,29 @@ export const Feature = z.object({
 });
 export type Feature = z.infer<typeof Feature>;
 
+// Found by the CLI: hunk `from` uses a name that hunk `to` defines.
+export const AutoLink = z.object({
+  from: z.string(),
+  to: z.string(),
+  symbols: z.array(z.string()),
+});
+export type AutoLink = z.infer<typeof AutoLink>;
+
+// Written by Claude to name the relationships a reviewer must understand.
+export const PlanLink = z.object({
+  from: z.string(),
+  to: z.string(),
+  label: z.string().min(1),
+});
+export type PlanLink = z.infer<typeof PlanLink>;
+
 export const Plan = z.object({
   title: z.string().optional(),
   overview: z.string().optional(),
   strategies: z.array(Strategy).min(1),
   features: z.array(Feature).default([]),
   skim: z.array(z.string()).default([]),
+  links: z.array(PlanLink).default([]),
 });
 export type Plan = z.infer<typeof Plan>;
 

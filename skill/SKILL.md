@@ -54,6 +54,7 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 | intent | 10 |
 | reviewFocus | 2 items × 8 |
 | feature title / description | 4 / 8 |
+| link label | 3 |
 
 **Style:** every word costs the reviewer. Write like a commit subject; fragments are fine.
 - Say what it does or what to watch. Never restate the code.
@@ -83,6 +84,22 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 **skim** is only for mechanical churn: moves, formatting, import order, version bumps. **Never logic.**
 
 **features** list what the PR does, as a user or caller would see it. Every non-mechanical hunk belongs to at least one feature.
+
+### Links
+
+The app's **Map** draws chunks and, zoomed in, the files of a chunk with arrows for which hunk uses what. The CLI finds those links from imports and names:
+
+```
+spark-joy links
+```
+
+Add `"links"` to the plan only for the arrows a reviewer must understand, labelled in at most 3 words:
+
+```json
+"links": [{ "from": "h012", "to": "h004", "label": "persists via" }]
+```
+
+`from` uses `to`. Unlabelled links still show. Add a link the CLI missed only when it's real.
 
 ## 4. Validate
 

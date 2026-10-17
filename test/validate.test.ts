@@ -147,3 +147,33 @@ describe("padding", () => {
     expect(withIntent("Reads hunks by line count")).toBe("");
   });
 });
+
+describe("links", () => {
+  const base = () => ({
+    strategies: [{ id: "layers", chunks: [{ id: "a", title: "A", intent: "x", hunks: ["h001", "h002", "h003"] }] }],
+    features: [{ title: "F", description: "d", hunks: ["h001", "h002", "h003"] }],
+  });
+
+  it("accepts short labels on known hunks", () => {
+    expect(errors(validatePlan({ ...base(), links: [{ from: "h002", to: "h001", label: "calls" }] }, hunks))).toEqual([]);
+  });
+
+  it("rejects unknown ids, self links and long labels", () => {
+    const msgs = errors(
+      validatePlan(
+        {
+          ...base(),
+          links: [
+            { from: "h009", to: "h001", label: "calls" },
+            { from: "h002", to: "h002", label: "calls" },
+            { from: "h002", to: "h001", label: "reads and then stores" },
+          ],
+        },
+        hunks,
+      ),
+    ).join("\n");
+    expect(msgs).toMatch(/unknown hunk id h009/);
+    expect(msgs).toMatch(/links a hunk to itself/);
+    expect(msgs).toMatch(/label is 4 words; max 3/);
+  });
+});

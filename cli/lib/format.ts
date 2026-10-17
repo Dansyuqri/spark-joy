@@ -1,5 +1,5 @@
 import { isIgnorable } from "../../shared/derive";
-import type { Hunk, Meta } from "../../shared/schema";
+import type { AutoLink, Hunk, Meta } from "../../shared/schema";
 
 const short = (sha: string) => sha.slice(0, 8);
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -83,4 +83,19 @@ export function showHunks(hunks: readonly Hunk[], ids: readonly string[]): strin
 
 export function showFile(hunks: readonly Hunk[], file: string): string[] {
   return hunks.filter((h) => h.file === file || h.oldFile === file).map((h) => h.id);
+}
+
+// Links grouped by file pair, definer first, for Claude to pick which to label.
+export function formatLinks(hunks: readonly Hunk[], links: readonly AutoLink[]): string {
+  const file = new Map(hunks.map((h) => [h.id, h.file]));
+  const pairs = new Map<string, string[]>();
+  for (const l of links) {
+    const key = `${file.get(l.to)} → ${file.get(l.from)}`;
+    pairs.set(key, [...(pairs.get(key) ?? []), `${clip(l.symbols.join(", "), 60)} (${l.to}→${l.from})`]);
+  }
+  if (!pairs.size) return "no cross-file links found";
+  return [...pairs]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([pair, items]) => [pair, ...items.map((i) => `    ${i}`)].join("\n"))
+    .join("\n");
 }

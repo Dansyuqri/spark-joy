@@ -20,6 +20,8 @@ interface Props {
   state: ReviewState;
   update: Update;
   at: number | "skim";
+  // File to scroll to, when opened from the map.
+  file?: string;
 }
 
 const go = (at: number | "skim") => {
@@ -27,7 +29,11 @@ const go = (at: number | "skim") => {
   window.scrollTo(0, 0);
 };
 
-export function ReviewPage({ plan, view, state, update, at }: Props) {
+export function ReviewPage({ plan, view, state, update, at, file }: Props) {
+  useEffect(() => {
+    if (file) document.getElementById(`file-${file}`)?.scrollIntoView({ block: "start" });
+  }, [file, at]);
+
   const reviewed = new Set(state.reviewed);
   const count = view.chunks.length;
   const hasSkim = view.skim.length > 0;

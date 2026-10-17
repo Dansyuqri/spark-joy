@@ -47,6 +47,7 @@ export function makeRepo(): string {
   write(root, "logo.bin", Buffer.from([0, 1, 2, 4]));
   write(root, "package-lock.json", '{"v":2}\n');
   write(root, "docs/guide.md", "# Guide\n\n  Hello\n");
+  write(root, "src/use.ts", 'import { f25 } from "./math";\n\nexport const doubled = () => f25() * 2;\n');
   write(root, "test/math.test.ts", "import { f3 } from '../src/math';\ntest('f3', () => expect(f3()).toBe(33));\n");
   sh(root, "add", "-A");
   sh(root, "commit", "-qm", "feature");

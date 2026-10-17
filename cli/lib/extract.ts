@@ -4,6 +4,7 @@ import type { Hunk, HunkFlag, Meta } from "../../shared/schema";
 import { parseDiff, type FileDiff, type RawHunk } from "./diff";
 import { fileFlags, hasGeneratedMarker, whitespaceOnly } from "./classify";
 import { splitHunk } from "./split";
+import { computeLinks } from "./symbols";
 import * as g from "./git";
 import { ensureRunsDir, runPaths, slug, writeJson, type RunPaths } from "./runs";
 
@@ -123,6 +124,7 @@ export async function extract(opts: ExtractOptions): Promise<ExtractResult> {
   await mkdir(paths.dir, { recursive: true });
   await writeJson(paths.hunks, hunks);
   await writeJson(paths.meta, meta);
+  await writeJson(paths.links, computeLinks(hunks));
   const untracked = opts.working ? await g.untracked(root) : [];
   return { paths, meta, hunks, untracked };
 }

@@ -32,7 +32,7 @@ export function DiffView({ hunks, notes, onAdd, onEdit, onDelete, collapsed }: P
         const added = hs.reduce((n, h) => n + h.added, 0);
         const removed = hs.reduce((n, h) => n + h.removed, 0);
         return (
-          <details key={`${file}-${fi}`} className="file" open={!collapsed}>
+          <details key={`${file}-${fi}`} id={`file-${file}`} className="file" open={!collapsed}>
             <summary>
               <span className="path">{file}</span>
               {first.oldFile && first.oldFile !== file && <span className="muted"> ← {first.oldFile}</span>}
