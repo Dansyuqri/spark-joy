@@ -304,6 +304,16 @@ textarea {
 .chunk-list li .title {
   flex: 1;
 }
+.chunk-list .branch {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.strategy .hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .size {
   font-variant-numeric: tabular-nums;
   color: var(--muted);

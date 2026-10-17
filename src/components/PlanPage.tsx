@@ -1,4 +1,4 @@
-import { hunkStatus, strategyLabel, strategyView } from "../../shared/derive";
+import { branchName, defaultPrefix, hunkStatus, strategyLabel, strategyView } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
@@ -13,6 +13,8 @@ interface Props {
 
 export function PlanPage({ data, plan, state, update }: Props) {
   const reviewed = new Set(state.reviewed);
+  const split = plan.mode === "split";
+  const prefix = defaultPrefix(data.meta.branch);
 
   return (
     <main className="page plan-page">
@@ -31,14 +33,17 @@ export function PlanPage({ data, plan, state, update }: Props) {
             <section key={s.id} className={`strategy ${isOn ? "on" : ""}`}>
               <h3>{strategyLabel(s)}</h3>
               <p className="stats">
-                {plural(s.chunks.length, "chunk")} · max {largest} lines
+                {plural(s.chunks.length, split ? "PR" : "chunk")} · max {largest} lines
               </p>
               <ol className="chunk-list">
                 {view.chunks.map((c) => (
                   <li key={c.chunk.id}>
                     <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
                     <span className="n">{c.index + 1}</span>
-                    <span className="title">{c.chunk.title}</span>
+                    <span className="title">
+                      {c.chunk.title}
+                      {split && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
+                    </span>
                     <Risk risk={c.chunk.risk} />
                     <Kind kind={c.chunk.kind} />
                     <span className="size">{c.size}</span>
@@ -54,6 +59,11 @@ export function PlanPage({ data, plan, state, update }: Props) {
               >
                 {isOn ? "Continue" : "Start"}
               </button>
+              {split && (
+                <p className="hint">
+                  Create the branches: <code>spark-joy split --apply</code>
+                </p>
+              )}
             </section>
           );
         })}

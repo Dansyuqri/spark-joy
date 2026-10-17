@@ -20,6 +20,8 @@ AI-written PRs are often thousands of lines long: too big to review properly. sp
 
 <p align="center"><img src="assets/demo.gif" width="800" alt="Choosing a review order, reviewing a chunk with a line note, then zooming into a chunk on the map"></p>
 
+Writing the big PR yourself? spark-joy can also split your staged, uncommitted or branch changes into small stacked PRs. See [Split your own changes](#split-your-own-changes).
+
 Works from plain git, so GitHub, GitLab or anything else. Nothing is posted anywhere; notes export as markdown for the PR.
 
 Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
@@ -77,17 +79,39 @@ In the app:
 | Command | What it does |
 | --- | --- |
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
+| `spark-joy extract --staged \| --uncommitted` | Diff `HEAD` against the index or the working tree, for splitting |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
 | `spark-joy links` | Cross-file links: which hunk uses a name another defines |
 | `spark-joy validate [--json]` | Check `plan.json` against the hunks |
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |
+| `spark-joy split [--check cmd] [--apply]` | Turn a split plan into stacked local branches |
 | `spark-joy install-skill [--project]` | Install the Claude Code skill |
 
 `base` defaults to `origin/HEAD`, then `origin/main`, `origin/master` or `main`. Runs are stored in `.spark-joy/`, which ignores itself in git.
 
 The plan format is documented in [SKILL.md](plugin/skills/spark-joy/SKILL.md), and the schema is in [shared/schema.ts](shared/schema.ts).
+
+## Split your own changes
+
+Writing the big PR yourself? Ask Claude to "split my changes into smaller PRs". It turns your staged changes, uncommitted changes or whole branch into small PRs, each built on the one before.
+
+<p align="center"><img src="assets/split.gif" width="800" alt="Extracting uncommitted changes, previewing five stacked PRs in the app, checking each PR's tests, then creating the branches"></p>
+
+1. **Extract** what you want to split: `--staged`, `--uncommitted`, or a base branch for the whole branch.
+2. **Plan.** Claude groups every change into ordered PRs: each must build on the ones before, and lockfiles go with the change that needs them. Preview the stack in the app; the Map shows how the PRs depend on each other.
+3. **Check.** `split` builds the PRs and confirms the last one matches your changes exactly. `--check` runs your tests on each PR in a temporary worktree.
+4. **Apply.** `split --apply` creates the local branches and writes each PR's title and description to `prs.md`. Nothing is pushed.
+
+```sh
+spark-joy extract --uncommitted                 # or --staged, or a base for the whole branch
+spark-joy split                                 # dry run
+spark-joy split --check "npm ci && npm test"    # optional
+spark-joy split --apply                         # creates <branch>-split/1-…, 2-…
+```
+
+Your working tree, staged files and current branch are never touched: the PRs are built from a temporary git index. If anything doesn't add up, no branches are created.
 
 ## Develop
 
@@ -102,8 +126,8 @@ npm run dev:app      # Vite dev server; proxies /api to a running `spark-joy ser
 
 Layout:
 
-- `cli/`: commands, diff parsing, splitting, classification, server.
+- `cli/`: commands, diff parsing, splitting, classification, server, stacked-branch builder.
 - `shared/`: schemas, validation and derived state, used by both the CLI and the app.
 - `src/`: the React review app.
-- `skill/`: the Claude Code skill.
+- `plugin/`: the Claude Code plugin and skill.
 - `test/`: Vitest, with a fixture git repo.

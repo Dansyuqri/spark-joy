@@ -88,9 +88,12 @@ export function chunkGraph(view: StrategyView, links: readonly Link[]): Graph {
 
 // Transitive reduction: drop u→v when another path already leads from u to v.
 // Keeps the overview readable; the dropped links still show when zoomed in.
+// Only forward edges (earlier chunk → later) count as paths, so a backward
+// link never hides a real dependency.
 function reduce(edges: GraphEdge[]): GraphEdge[] {
+  const at = (id: string) => Number(id.slice(1));
   const out = new Map<string, string[]>();
-  for (const e of edges) out.set(e.from, [...(out.get(e.from) ?? []), e.to]);
+  for (const e of edges) if (at(e.from) < at(e.to)) out.set(e.from, [...(out.get(e.from) ?? []), e.to]);
   const reachable = (from: string, to: string, skip: GraphEdge): boolean => {
     const seen = new Set<string>();
     const stack = (out.get(from) ?? []).filter((n) => !(from === skip.from && n === skip.to));

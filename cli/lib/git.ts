@@ -3,9 +3,10 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
-export async function git(cwd: string, args: string[], input?: string): Promise<string> {
+export async function git(cwd: string, args: string[], input?: string, env?: NodeJS.ProcessEnv): Promise<string> {
   const child = exec("git", ["-c", "core.quotePath=false", ...args], {
     cwd,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
     maxBuffer: 1024 * 1024 * 1024,
     encoding: "utf8",
   });
@@ -47,6 +48,7 @@ export async function mergeBase(cwd: string, a: string, b: string): Promise<stri
   return sha;
 }
 
+// `to` undefined diffs against the working tree; "index" against the index.
 export function diff(cwd: string, from: string, to: string | undefined): Promise<string> {
   const args = [
     "diff",
@@ -58,7 +60,8 @@ export function diff(cwd: string, from: string, to: string | undefined): Promise
     "--dst-prefix=b/",
     from,
   ];
-  if (to) args.push(to);
+  if (to === "index") args.splice(1, 0, "--cached");
+  else if (to) args.push(to);
   return git(cwd, args);
 }
 

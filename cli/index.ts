@@ -1,8 +1,9 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { defaultPrefix } from "../shared/derive";
 import { validatePlan } from "../shared/validate";
 import { extract } from "./lib/extract";
 import { exportMarkdown } from "./lib/export";
@@ -10,6 +11,7 @@ import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } fr
 import * as g from "./lib/git";
 import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
 import { serve } from "./lib/server";
+import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
 
 const PKG_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -20,6 +22,8 @@ Usage: spark-joy <command> [options]
 Commands:
   extract [base]        Diff merge-base(base, HEAD)..HEAD into hunks (base defaults to origin's default branch)
       --working         Diff against the working tree (uncommitted changes) instead of HEAD
+      --staged          Only staged changes (HEAD → index); for split
+      --uncommitted     Only uncommitted changes (HEAD → working tree); for split
       --split-at <n>    Split hunks longer than n lines (default 150)
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
@@ -31,6 +35,11 @@ Commands:
       --port <n>        Port to listen on (default 4848)
   export                Write review.md with progress, notes and the feature summary
       --stdout          Print instead of writing the file
+  split                 Dry run of a split plan: build the stacked PRs and check they add up
+      --check <cmd>     Run cmd on each PR in a temporary worktree, e.g. "npm ci && npm test"
+      --apply           Create the branches (never pushes)
+      --prefix <name>   Branch prefix (default <branch>-split)
+      --force           Move branches that already exist
   install-skill         Install the Claude Code skill into ~/.claude/skills/spark-joy
       --project         Install into ./.claude/skills/spark-joy instead
 
@@ -53,6 +62,12 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
     options: {
       run: { type: "string" },
       working: { type: "boolean" },
+      staged: { type: "boolean" },
+      uncommitted: { type: "boolean" },
+      apply: { type: "boolean" },
+      prefix: { type: "string" },
+      force: { type: "boolean" },
+      check: { type: "string" },
       "split-at": { type: "string" },
       file: { type: "string" },
       json: { type: "boolean" },
@@ -78,9 +93,11 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
     case "extract": {
       const splitAt = values["split-at"] ? Number(values["split-at"]) : undefined;
       if (splitAt !== undefined && !(splitAt >= 40)) throw new Error("--split-at must be a number ≥ 40");
-      const r = await extract({ cwd, base: rest[0], working: values.working, run: values.run, splitAt });
+      const flags = (["working", "staged", "uncommitted"] as const).filter((f) => values[f]);
+      if (flags.length > 1) throw new Error(`pick one of ${flags.map((f) => `--${f}`).join(", ")}`);
+      const r = await extract({ cwd, base: rest[0], source: flags[0], run: values.run, splitAt });
       console.log(describeMeta(r.meta));
-      console.log(`wrote ${r.paths.dir}`);
+      console.log(`wrote ${relative(cwd, r.paths.dir)}`);
       if (r.hunks.length === 0) console.log("the diff is empty; nothing to review");
       if (r.untracked.length)
         console.log(`note: ${r.untracked.length} untracked file(s) are not included; \`git add -N <file>\` to include them`);
@@ -145,8 +162,55 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       if (values.stdout) process.stdout.write(md);
       else {
         await writeFile(p.review, md);
-        console.log(`wrote ${p.review}`);
+        console.log(`wrote ${relative(cwd, p.review)}`);
       }
+      return 0;
+    }
+
+    case "split": {
+      const p = await run(cwd, values.run);
+      const raw = await readPlanRaw(p);
+      if (raw === undefined) throw new Error(`no plan yet; write ${p.plan}`);
+      const hunks = await readHunks(p);
+      const result = validatePlan(raw, hunks);
+      if (!result.ok || !result.plan) throw new Error("the plan has errors; run `spark-joy validate`");
+      const meta = await readMeta(p);
+      const prefix = values.prefix ?? defaultPrefix(meta.branch);
+      const stack = await buildStack({
+        root: meta.repoRoot,
+        meta,
+        hunks,
+        plan: result.plan,
+        prefix,
+        indexFile: join(p.dir, "split.index"),
+      });
+      for (const pr of stack.prs)
+        console.log(`${String(pr.n).padStart(2)}  ${pr.branch}  ${pr.lines} lines, ${pr.files} files  ${pr.chunk.title}`);
+      console.log(`${stack.prs.length} PRs; the last one matches your changes exactly`);
+
+      if (values.check !== undefined) {
+        const tmp = await mkdtemp(join(tmpdir(), "spark-joy-check-"));
+        try {
+          const results = await checkStack(meta.repoRoot, stack, values.check, tmp);
+          for (const r of results) {
+            console.log(`PR ${r.n}: ${r.ok ? "passed" : "failed"}`);
+            if (!r.ok) console.log(r.output.trimEnd().split("\n").slice(-20).map((l) => `    ${l}`).join("\n"));
+          }
+          if (results.some((r) => !r.ok)) return 1;
+        } finally {
+          await rm(tmp, { recursive: true, force: true });
+        }
+      }
+
+      await writeFile(p.prs, prsMarkdown(meta, stack));
+      if (!values.apply) {
+        console.log(`wrote ${relative(cwd, p.prs)}\nnothing created; add --apply to create the branches`);
+        return 0;
+      }
+      await createBranches(meta.repoRoot, stack, !!values.force);
+      console.log(`created ${stack.prs.length} branches; your working tree is unchanged. To publish:`);
+      for (const pr of stack.prs) console.log(`  git push -u origin ${pr.branch}`);
+      console.log(`PR titles and descriptions: ${relative(cwd, p.prs)}`);
       return 0;
     }
 

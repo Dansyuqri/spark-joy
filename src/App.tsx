@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { progress, strategyView } from "../shared/derive";
+import { headLabel, progress, strategyView } from "../shared/derive";
 import type { ReviewState } from "../shared/schema";
 import { loadRun, saveState, type RunData } from "./api";
 import { MapPage } from "./components/MapPage";
@@ -131,7 +131,7 @@ export function App() {
         </div>
         <div
           className="run"
-          title={`${meta.base} → ${meta.working ? "working tree" : meta.headSha.slice(0, 8)} · +${meta.stats.added} −${meta.stats.removed} · ${meta.stats.files} files`}
+          title={`${meta.base} → ${headLabel(meta)} · +${meta.stats.added} −${meta.stats.removed} · ${meta.stats.files} files`}
         >
           {data.plan?.title ?? meta.branch}
         </div>

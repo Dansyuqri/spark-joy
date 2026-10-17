@@ -1,11 +1,13 @@
 ---
 name: spark-joy
-description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, or types /spark-joy.
 ---
 
 # spark-joy
 
-You group a branch's diff into reviewable chunks; the `spark-joy` CLI does the rest. The reader is a tired human. **Every word you write is load on them. Be terse.**
+You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two modes:
+- **Review** (default): someone else's PR, read in chunks. Steps 1–5.
+- **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode). The reader is a tired human. **Every word you write is load on them. Be terse.**
 
 Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
 
@@ -112,6 +114,43 @@ Fix every error and re-run until it says `plan ok`. Fix the warnings too.
 ## 5. Serve
 
 Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more.
+
+## Split mode
+
+Use it when the user wants their own changes cut into smaller PRs. Extract what they named:
+
+```
+spark-joy extract --staged        # staged only
+spark-joy extract --uncommitted   # staged + unstaged
+spark-joy extract [base]          # the whole branch
+```
+
+Read the hunks as in step 2, then write the plan with `"mode": "split"` and one strategy, `split`:
+
+```json
+{
+  "mode": "split",
+  "title": "Team invitations",
+  "strategies": [{ "id": "split", "chunks": [
+    { "id": "schema", "title": "Invitations table", "intent": "Store pending invites.", "hunks": ["h004", "h005", "h020"] },
+    { "id": "api", "title": "Invite endpoint", "intent": "Admins invite by email.", "hunks": ["h007"], "dependsOn": ["schema"] }
+  ]}]
+}
+```
+
+- Each chunk is one PR, stacked in order: PR 2 is built on PR 1.
+- Every hunk goes in a PR, lockfiles included: put each with the change that needs it. There is no skim.
+- Each PR must build and pass tests on top of the earlier ones. Never split a function from its callers' update.
+- Same word limits and chunk sizes. The title and intent become the commit message and PR text.
+- Branches default to `<branch>-split/<n>-<title>`; set `"branch"` on a chunk to override.
+
+Then:
+
+1. `spark-joy validate` until `plan ok`.
+2. `spark-joy serve` in the background, so the user can preview the PRs.
+3. `spark-joy split`: a dry run that checks the PRs add up to exactly the original changes.
+4. If the repo has a fast test command: `spark-joy split --check "<install && test>"`. Each PR runs in a fresh worktree, so include the install step. Fix the plan if a PR fails.
+5. Ask the user, then run `spark-joy split --apply`. It creates local branches only and leaves the working tree alone. Reply with the branch list and the path to `prs.md`. Never push.
 
 ## After new commits
 

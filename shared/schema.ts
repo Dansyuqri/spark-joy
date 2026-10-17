@@ -46,6 +46,9 @@ export const Meta = z.object({
   mergeBase: z.string(),
   headSha: z.string(),
   working: z.boolean(),
+  // What the diff covers. `mergeBase` is the commit it starts from: the
+  // merge-base for "pr" and "working", HEAD for "staged" and "uncommitted".
+  source: z.enum(["pr", "working", "staged", "uncommitted"]).optional(),
   createdAt: z.string(),
   stats: z.object({
     files: z.number().int(),
@@ -68,6 +71,8 @@ export const Chunk = z.object({
   dependsOn: z.array(z.string()).default([]),
   reviewFocus: z.array(z.string()).default([]),
   risk: Risk.default("low"),
+  // Split mode: the branch this chunk becomes.
+  branch: z.string().min(1).optional(),
 });
 export type Chunk = z.infer<typeof Chunk>;
 
@@ -103,6 +108,8 @@ export const PlanLink = z.object({
 export type PlanLink = z.infer<typeof PlanLink>;
 
 export const Plan = z.object({
+  // "split" turns the plan into stacked PRs for the author instead of a review.
+  mode: z.enum(["review", "split"]).default("review"),
   title: z.string().optional(),
   overview: z.string().optional(),
   strategies: z.array(Strategy).min(1),
