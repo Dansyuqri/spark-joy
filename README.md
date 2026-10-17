@@ -70,6 +70,7 @@ In the app:
 
 - `j` / `k` move between chunks and `x` toggles reviewed.
 - Click a line number to leave a note on that line.
+- Use **↑ 20**, **↓ 20** or **Show all** between hunks to see more context, or **View file** to see the whole file.
 - **Summary → Export review.md** writes a markdown report with progress, notes (including `file:line`) and the feature list.
 
 ### Commands

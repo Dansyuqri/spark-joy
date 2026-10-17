@@ -100,6 +100,27 @@ describe("review app", () => {
     expect(errors).toEqual([]);
   });
 
+  it("expands context around hunks and shows whole files", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    // Find a chunk with a file that has unchanged lines to expand.
+    for (let n = 1; n <= 3; n++) {
+      await page.goto(`${server.url}/#/review/${n}`);
+      await page.locator("tr.line").first().waitFor();
+      if (await page.locator(".view-file").count()) break;
+    }
+    const file = page.locator("details.file", { has: page.locator(".view-file") }).first();
+    await file.locator("tr.gap-row button", { hasText: "Show all" }).first().click();
+    await file.locator("tr.line.expanded").first().waitFor();
+
+    // View file: every gap opens, so no expand buttons are left.
+    await file.locator(".view-file").click();
+    await file.locator(".view-file", { hasText: "Diff only" }).waitFor();
+    await expect.poll(() => file.locator("tr.gap-row").count()).toBe(0);
+    await page.screenshot({ path: process.env.SHOT ?? "/dev/null", fullPage: false }).catch(() => {});
+    expect(errors).toEqual([]);
+  });
+
   it("previews a split plan as stacked PRs", async () => {
     const { hunks, paths } = await extract({ cwd: root, base: "main", run: "split" });
     const half = Math.ceil(hunks.length / 2);

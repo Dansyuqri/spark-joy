@@ -128,3 +128,38 @@ export function notesInHunks(hs: readonly Hunk[], notes: readonly LineNote[]): L
     }),
   );
 }
+
+// A file's diff laid out top to bottom: the hunks this view shows, hunks that
+// belong elsewhere, and the unchanged lines between them (new-side numbers;
+// `to` undefined means up to the end of the file).
+export type FileSegment =
+  | { kind: "hunk"; hunk: Hunk }
+  | { kind: "foreign"; hunks: Hunk[] }
+  | { kind: "gap"; from: number; to?: number; oldOffset: number };
+
+export function fileSegments(fileHunks: readonly Hunk[], shown: ReadonlySet<string>): FileSegment[] {
+  const textual = fileHunks.filter((h) => h.lines.length > 0);
+  const own = fileHunks.filter((h) => shown.has(h.id));
+  // Added and deleted files show whole; placeholders have no lines to place.
+  const status = fileHunks[0]?.status;
+  if (status === "added" || status === "deleted" || textual.length !== fileHunks.length)
+    return own.map((hunk) => ({ kind: "hunk", hunk }));
+
+  const out: FileSegment[] = [];
+  let next = 1;
+  let offset = 0;
+  for (const h of [...textual].sort((a, b) => a.newStart - b.newStart)) {
+    // An empty side's start points at the line before the change.
+    const newStart = h.newLines === 0 ? h.newStart + 1 : h.newStart;
+    const oldStart = h.oldLines === 0 ? h.oldStart + 1 : h.oldStart;
+    if (newStart > next) out.push({ kind: "gap", from: next, to: newStart - 1, oldOffset: offset });
+    const last = out.at(-1);
+    if (shown.has(h.id)) out.push({ kind: "hunk", hunk: h });
+    else if (last?.kind === "foreign") last.hunks.push(h);
+    else out.push({ kind: "foreign", hunks: [h] });
+    next = newStart + h.newLines;
+    offset = oldStart + h.oldLines - next;
+  }
+  out.push({ kind: "gap", from: next, oldOffset: offset });
+  return out;
+}
