@@ -2,6 +2,7 @@ import {
   chunkNoteKey,
   featureChunks,
   featureHunks,
+  headLabel,
   hunkStatus,
   notesInHunks,
   progress,
@@ -22,12 +23,11 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
   if (!view) return "";
   const reviewed = new Set(state.reviewed);
   const p = progress(view, reviewed);
-  const head = meta.working ? "working tree" : meta.headSha.slice(0, 8);
   const pct = p.linesTotal ? Math.round((100 * p.linesDone) / p.linesTotal) : 100;
   const out: string[] = [];
 
   out.push(`# Review: ${plan.title ?? meta.branch}`, "");
-  out.push(`${p.done}/${p.total} chunks · ${pct}% lines · \`${meta.base}\` → ${head}`, "");
+  out.push(`${p.done}/${p.total} chunks · ${pct}% lines · \`${meta.base}\` → ${headLabel(meta)}`, "");
 
   if (plan.features.length) {
     out.push("## Features", "");

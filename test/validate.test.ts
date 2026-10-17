@@ -177,3 +177,35 @@ describe("links", () => {
     expect(msgs).toMatch(/label is 4 words; max 3/);
   });
 });
+
+describe("split mode", () => {
+  const split = (chunks: ReturnType<typeof chunk>[], over: Record<string, unknown> = {}) => ({
+    mode: "split",
+    strategies: [{ id: "split", chunks }],
+    ...over,
+  });
+
+  it("accepts one stack that places every hunk, mechanical ones included", () => {
+    const r = validatePlan(split([chunk("a", ["h001", "h004"]), chunk("b", ["h002", "h003"], ["a"])]), hunks);
+    expect(r.issues).toEqual([]);
+  });
+
+  it("requires every hunk, one split strategy and no skim", () => {
+    expect(errors(validatePlan(split([chunk("a", ["h001", "h002", "h003"])]), hunks))).toEqual([
+      expect.stringMatching(/hunks not in any PR: h004/),
+    ]);
+    expect(errors(validatePlan({ ...plan(), mode: "split" }, hunks))).toContain(
+      'split mode takes exactly one strategy, with id "split"',
+    );
+    expect(errors(validatePlan(split([chunk("a", ["h001", "h002", "h003"])], { skim: ["h004"] }), hunks))).toContain(
+      "split mode has no skim; put every hunk in a PR",
+    );
+  });
+
+  it("checks branch names", () => {
+    const named = (b: string) => ({ ...chunk("a", ["h001", "h002", "h003", "h004"]), branch: b });
+    expect(errors(validatePlan(split([named("team/invites-1")]), hunks))).toEqual([]);
+    for (const bad of ["has space", "a..b", "x.lock", "/lead", "trail/"])
+      expect(errors(validatePlan(split([named(bad)]), hunks))).toEqual([`invalid branch name "${bad}"`]);
+  });
+});

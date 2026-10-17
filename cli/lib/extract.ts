@@ -72,9 +72,13 @@ export function buildHunks(files: FileDiff[], attrGenerated: ReadonlySet<string>
   return hunks;
 }
 
+export type Source = NonNullable<Meta["source"]>;
+
 export interface ExtractOptions {
   cwd: string;
   base?: string;
+  // Defaults to "pr". `working` is the older spelling of source "working".
+  source?: Source;
   working?: boolean;
   run?: string;
   splitAt?: number;
@@ -90,12 +94,16 @@ export interface ExtractResult {
 export async function extract(opts: ExtractOptions): Promise<ExtractResult> {
   const root = await g.repoRoot(opts.cwd);
   const branch = await g.currentBranch(root);
-  const base = opts.base ?? (await g.defaultBase(root));
-  const baseSha = await g.revParse(root, base);
+  const source: Source = opts.source ?? (opts.working ? "working" : "pr");
+  const local = source === "staged" || source === "uncommitted";
+  if (local && opts.base) throw new Error(`--${source} always diffs against HEAD; drop the base`);
   const headSha = await g.revParse(root, "HEAD");
-  const mb = await g.mergeBase(root, baseSha, headSha);
+  const base = local ? "HEAD" : (opts.base ?? (await g.defaultBase(root)));
+  const baseSha = local ? headSha : await g.revParse(root, base);
+  const mb = local ? headSha : await g.mergeBase(root, baseSha, headSha);
+  const working = source === "working" || source === "uncommitted";
 
-  const text = await g.diff(root, mb, opts.working ? undefined : headSha);
+  const text = await g.diff(root, mb, source === "staged" ? "index" : working ? undefined : headSha);
   const files = parseDiff(text);
   const attr = await g.generatedByAttr(root, files.map((f) => f.file));
   const hunks = buildHunks(files, attr, opts.splitAt);
@@ -109,7 +117,8 @@ export async function extract(opts: ExtractOptions): Promise<ExtractResult> {
     baseSha,
     mergeBase: mb,
     headSha,
-    working: !!opts.working,
+    working,
+    source,
     createdAt: new Date().toISOString(),
     stats: {
       files: files.length,
@@ -125,6 +134,6 @@ export async function extract(opts: ExtractOptions): Promise<ExtractResult> {
   await writeJson(paths.hunks, hunks);
   await writeJson(paths.meta, meta);
   await writeJson(paths.links, computeLinks(hunks));
-  const untracked = opts.working ? await g.untracked(root) : [];
+  const untracked = working ? await g.untracked(root) : [];
   return { paths, meta, hunks, untracked };
 }

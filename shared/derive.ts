@@ -1,4 +1,4 @@
-import { IGNORABLE_FLAGS, type Chunk, type Feature, type Hunk, type LineNote, type Plan, type ReviewState, type Strategy } from "./schema";
+import { IGNORABLE_FLAGS, type Chunk, type Feature, type Hunk, type LineNote, type Meta, type Plan, type ReviewState, type Strategy } from "./schema";
 
 export type ChunkStatus = "done" | "partial" | "todo";
 
@@ -8,7 +8,19 @@ export const isIgnorable = (h: Hunk): boolean =>
 export const changedLines = (hs: readonly Hunk[]): number =>
   hs.reduce((n, h) => n + h.added + h.removed, 0);
 
-const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature" };
+// What the diff ends at.
+export const headLabel = (meta: Meta): string =>
+  meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
+
+const branchSlug = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "pr";
+
+// Split mode: `<branch>-split/`, so the stack never collides with the branch it came from.
+export const defaultPrefix = (branch: string) => (branch === "HEAD" ? "split" : `${branch}-split`);
+
+export const branchName = (prefix: string, n: number, c: Chunk) => c.branch ?? `${prefix}/${n}-${branchSlug(c.title)}`;
+
+const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs" };
 export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ?? s.id;
 
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;

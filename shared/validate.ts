@@ -29,6 +29,10 @@ const PADDING: [RegExp, string][] = [
   [/\b(various|several|some|basically|simply|just|really|very)\b/i, "drop the filler word"],
 ];
 
+// A loose `git check-ref-format`: catches typos before `split --apply` does.
+export const validBranch = (b: string): boolean =>
+  !/[\s~^:?*[\\]|\.\.|@\{|\/\/|^[/.-]|[/.]$|\.lock$|\/\./.test(b) && b !== "@";
+
 export const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
 export interface Issue {
@@ -86,7 +90,12 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     }
   }
 
-  if (plan.strategies.length < 2)
+  const split = plan.mode === "split";
+  if (split) {
+    if (plan.strategies.length !== 1 || plan.strategies[0]!.id !== "split")
+      error("strategies", 'split mode takes exactly one strategy, with id "split"');
+    if (plan.skim.length) error("skim", "split mode has no skim; put every hunk in a PR");
+  } else if (plan.strategies.length < 2)
     warn("strategies", "only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order");
 
   const strategyIds = new Set<string>();
@@ -97,8 +106,14 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
 
     const seen = new Map<string, string>();
     const chunkIndex = new Map<string, number>();
+    const branches = new Set<string>();
     s.chunks.forEach((c, i) => {
       const cw = `${where} / chunk ${c.id}`;
+      if (c.branch !== undefined) {
+        if (!validBranch(c.branch)) error(cw, `invalid branch name "${c.branch}"`);
+        else if (branches.has(c.branch)) error(cw, `branch ${c.branch} is used twice`);
+        branches.add(c.branch);
+      }
       if (chunkIndex.has(c.id)) error(cw, "duplicate chunk id");
       chunkIndex.set(c.id, i);
       if (c.hunks.length === 0) error(cw, "chunk has no hunks");
@@ -133,9 +148,10 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
       }
     });
 
-    const missing = hunks.filter((h) => !seen.has(h.id) && !skim.has(h.id) && !isIgnorable(h));
+    // A split must carry every change, lockfiles included, or it would be lost.
+    const missing = hunks.filter((h) => !seen.has(h.id) && !skim.has(h.id) && (split || !isIgnorable(h)));
     if (missing.length)
-      error(where, `hunks not in any chunk or skim: ${missing.map(describe).join(", ")}`);
+      error(where, `hunks not in any ${split ? "PR" : "chunk or skim"}: ${missing.map(describe).join(", ")}`);
   }
 
   plan.links.forEach((l, i) => {
@@ -145,7 +161,7 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     tooLong(lw, "label", l.label, BUDGET.linkLabel);
   });
 
-  if (plan.features.length === 0) warn("features", "no features; the summary page will be empty");
+  if (plan.features.length === 0 && !split) warn("features", "no features; the summary page will be empty");
   const inFeature = new Set<string>();
   plan.features.forEach((f, i) => {
     const fw = `feature ${i + 1} (${f.title})`;

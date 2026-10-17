@@ -1,13 +1,12 @@
-import { isIgnorable } from "../../shared/derive";
+import { headLabel, isIgnorable } from "../../shared/derive";
 import type { AutoLink, Hunk, Meta } from "../../shared/schema";
 
 const short = (sha: string) => sha.slice(0, 8);
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function describeMeta(meta: Meta): string {
-  const head = meta.working ? "working tree" : `HEAD ${short(meta.headSha)}`;
   const { files, hunks, added, removed } = meta.stats;
-  return `run ${meta.run}: ${meta.base} (${short(meta.mergeBase)}) → ${head} on ${meta.branch}\n${files} files, ${hunks} hunks, +${added} −${removed}`;
+  return `run ${meta.run}: ${meta.base} (${short(meta.mergeBase)}) → ${headLabel(meta)} on ${meta.branch}\n${files} files, ${hunks} hunks, +${added} −${removed}`;
 }
 
 // First changed line that says something, to hint at what a hunk does.

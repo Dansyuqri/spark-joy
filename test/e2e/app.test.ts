@@ -100,6 +100,33 @@ describe("review app", () => {
     expect(errors).toEqual([]);
   });
 
+  it("previews a split plan as stacked PRs", async () => {
+    const { hunks, paths } = await extract({ cwd: root, base: "main", run: "split" });
+    const half = Math.ceil(hunks.length / 2);
+    await writeJson(paths.plan, {
+      mode: "split",
+      strategies: [
+        {
+          id: "split",
+          chunks: [
+            { id: "a", title: "Math changes", intent: "Return values.", hunks: hunks.slice(0, half).map((h) => h.id) },
+            { id: "b", title: "Rest", intent: "Everything else.", hunks: hunks.slice(half).map((h) => h.id), branch: "team/rest" },
+          ],
+        },
+      ],
+    });
+    const s = await serve({ paths, appDir, port: 0 });
+    try {
+      await page.goto(s.url);
+      await page.getByRole("heading", { name: "Stacked PRs" }).waitFor();
+      await page.locator("code.branch", { hasText: "feature-split/1-math-changes" }).waitFor();
+      await page.locator("code.branch", { hasText: "team/rest" }).waitFor();
+      await page.getByText("spark-joy split --apply").waitFor();
+    } finally {
+      await s.close();
+    }
+  });
+
   it("rejects requests for other hosts and cross-origin writes", async () => {
     // fetch() won't let us set Host, so use a raw request.
     const { hostname, port } = new URL(server.url);
