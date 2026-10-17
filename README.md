@@ -39,7 +39,7 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 
 ## Install
 
-Requires Node 22 or newer and git. Published on npm as [`@dansyuqri/spark-joy`](https://www.npmjs.com/package/@dansyuqri/spark-joy).
+Requires Node 24 or newer and git. Published on npm as [`@dansyuqri/spark-joy`](https://www.npmjs.com/package/@dansyuqri/spark-joy).
 
 ```sh
 npm install -g @dansyuqri/spark-joy

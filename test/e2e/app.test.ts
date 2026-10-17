@@ -41,8 +41,9 @@ describe("review app", () => {
     await page.goto(server.url);
 
     // Plan page: both strategies, then pick one.
-    await expect(page.getByRole("heading", { name: "Foundations first" }).isVisible()).resolves.toBe(true);
-    await expect(page.getByRole("heading", { name: "By feature" }).isVisible()).resolves.toBe(true);
+    // waitFor, unlike isVisible, waits for the app to finish loading the run.
+    await page.getByRole("heading", { name: "Foundations first" }).waitFor();
+    await page.getByRole("heading", { name: "By feature" }).waitFor();
     await page.getByRole("button", { name: "Start" }).first().click();
 
     // Review page: first chunk.
