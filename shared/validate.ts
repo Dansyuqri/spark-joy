@@ -9,15 +9,24 @@ const SKIM_WARN_LINES = 30;
 // Word budgets for plan text. Every word here is one more thing a reviewer
 // reads before the code, so going over is an error, not a warning.
 export const BUDGET = {
-  planTitle: 6,
-  overview: 25,
-  chunkTitle: 6,
-  intent: 15,
+  planTitle: 5,
+  overview: 15,
+  chunkTitle: 5,
+  intent: 10,
   focusItems: 2,
-  focusWords: 10,
-  featureTitle: 5,
-  featureDescription: 12,
+  focusWords: 8,
+  featureTitle: 4,
+  featureDescription: 8,
 } as const;
+
+// Phrases that add words without adding meaning: contrasts with what the code
+// doesn't do ("by count, not prefix"), and filler openers.
+const PADDING: [RegExp, string][] = [
+  [/,\s*not\b|\bnot just\b|\brather than\b|\binstead of\b/i, "drop the contrast; say only what it does"],
+  [/^(this|the) (chunk|pr|change|code)\b/i, "drop the opener"],
+  [/^(introduces|adds support for|implements)\b/i, "drop the opener"],
+  [/\b(various|several|some|basically|simply|just|really|very)\b/i, "drop the filler word"],
+];
 
 export const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
@@ -51,7 +60,12 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
   const warn = (where: string, message: string) => issues.push({ level: "warning", where, message });
 
   const tooLong = (where: string, what: string, text: string | undefined, max: number) => {
-    if (text !== undefined && words(text) > max) error(where, `${what} is ${words(text)} words; max ${max}`);
+    if (text === undefined) return;
+    if (words(text) > max) error(where, `${what} is ${words(text)} words; max ${max}`);
+    for (const [re, fix] of PADDING) {
+      const m = re.exec(text);
+      if (m) error(where, `${what} "${m[0].trim()}": ${fix}`);
+    }
   };
   tooLong("plan", "title", plan.title, BUDGET.planTitle);
   tooLong("plan", "overview", plan.overview, BUDGET.overview);

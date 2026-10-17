@@ -31,16 +31,16 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 ```json
 {
   "title": "Team invitations",
-  "overview": "Admins invite users by email; invites expire after 7 days.",
+  "overview": "Email invites to teams; expire after 7 days.",
   "strategies": [
     { "id": "layers", "chunks": [
-      { "id": "schema", "title": "Invitations table", "intent": "Stores pending invites; everything else reads it.",
+      { "id": "schema", "title": "Invitations table", "intent": "Pending invites; everything reads this.",
         "hunks": ["h004", "h005"], "risk": "med",
         "reviewFocus": ["Unique (team_id, email) blocks re-invites?"] }
     ]},
     { "id": "features", "chunks": [] }
   ],
-  "features": [{ "title": "Invite by email", "description": "Admins invite by email; expires in 7 days.", "hunks": ["h004", "h007"] }],
+  "features": [{ "title": "Invite by email", "description": "Admins invite by email; 7-day expiry.", "hunks": ["h004", "h007"] }],
   "skim": ["h020"]
 }
 ```
@@ -49,13 +49,20 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 
 | field | max words |
 |---|---|
-| title, chunk title | 6 |
-| overview | 25 |
-| intent | 15 |
-| reviewFocus | 2 items × 10 |
-| feature title / description | 5 / 12 |
+| title, chunk title | 5 |
+| overview | 15 |
+| intent | 10 |
+| reviewFocus | 2 items × 8 |
+| feature title / description | 4 / 8 |
 
-**Style:** write like a commit subject. Fragments are fine. Say *why* or *what to watch*, never restate the code. No filler ("This chunk…", "Introduces…", "Various…"). Omit `reviewFocus` when nothing is risky.
+**Style:** every word costs the reviewer. Write like a commit subject; fragments are fine.
+- Say what it does or what to watch. Never restate the code.
+- Never contrast with what it doesn't do: ~~"Reads hunks by count, not prefix"~~ → "Reads hunks by line count".
+- No openers or filler: ~~"This chunk introduces various…"~~.
+- Cut every word that doesn't change the meaning.
+- Omit `intent` detail the title already says, and omit `reviewFocus` when nothing is risky.
+
+`validate` rejects contrasts (", not", "rather than", "instead of"), openers and filler words.
 
 **Two strategies, both required.** Each places every non-mechanical hunk exactly once, in a chunk or in `skim`.
 - `layers`: dependency order: types/schema → logic → wiring → callers/UI → leftover tests → docs.

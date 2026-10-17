@@ -104,22 +104,46 @@ describe("validatePlan", () => {
 
   it("rejects text over the word budgets", () => {
     const long = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
-    const p = plan({ overview: long(BUDGET.overview + 1), features: [{ title: long(6), description: "d", hunks: ["h001", "h002", "h003"] }] });
+    const p = plan({ overview: long(BUDGET.overview + 1), features: [{ title: long(BUDGET.featureTitle + 1), description: "d", hunks: ["h001", "h002", "h003"] }] });
     p.strategies[0]!.chunks[0] = {
       ...chunk("a", ["h001"]),
       intent: long(BUDGET.intent + 1),
-      reviewFocus: ["one", "two", long(11)],
+      reviewFocus: ["one", "two", long(BUDGET.focusWords + 1)],
     } as ReturnType<typeof chunk>;
     const msgs = errors(validatePlan(p, hunks)).join("\n");
-    expect(msgs).toMatch(/overview is 26 words; max 25/);
-    expect(msgs).toMatch(/intent is 16 words; max 15/);
+    expect(msgs).toContain(`overview is ${BUDGET.overview + 1} words; max ${BUDGET.overview}`);
+    expect(msgs).toContain(`intent is ${BUDGET.intent + 1} words; max ${BUDGET.intent}`);
     expect(msgs).toMatch(/3 reviewFocus items; max 2/);
-    expect(msgs).toMatch(/reviewFocus 3 is 11 words; max 10/);
-    expect(msgs).toMatch(/title is 6 words; max 5/);
+    expect(msgs).toContain(`reviewFocus 3 is ${BUDGET.focusWords + 1} words; max ${BUDGET.focusWords}`);
+    expect(msgs).toContain(`title is ${BUDGET.featureTitle + 1} words; max ${BUDGET.featureTitle}`);
   });
 
   it("counts words on whitespace", () => {
     expect(words("  a  b\nc ")).toBe(3);
     expect(words("")).toBe(0);
+  });
+});
+
+describe("padding", () => {
+  const withIntent = (intent: string) => {
+    const p = {
+      strategies: [{ id: "layers", chunks: [{ id: "a", title: "A", intent, hunks: ["h001", "h002", "h003"] }] }],
+      features: [{ title: "F", description: "d", hunks: ["h001", "h002", "h003"] }],
+    };
+    return errors(validatePlan(p, hunks)).join("\n");
+  };
+
+  it.each([
+    ["Reads hunks by count, not prefix", /drop the contrast/],
+    ["Uses ids rather than code", /drop the contrast/],
+    ["This chunk wires the server", /drop the opener/],
+    ["Introduces the parser", /drop the opener/],
+    ["Various fixes", /drop the filler/],
+  ])("rejects %j", (intent, msg) => {
+    expect(withIntent(intent)).toMatch(msg);
+  });
+
+  it("accepts plain statements", () => {
+    expect(withIntent("Reads hunks by line count")).toBe("");
   });
 });
