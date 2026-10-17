@@ -8,6 +8,9 @@ export const isIgnorable = (h: Hunk): boolean =>
 export const changedLines = (hs: readonly Hunk[]): number =>
   hs.reduce((n, h) => n + h.added + h.removed, 0);
 
+const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature" };
+export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ?? s.id;
+
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;
 
 export interface ChunkView {

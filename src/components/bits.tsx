@@ -25,12 +25,16 @@ export function StatusIcon({ status }: { status: ChunkStatus }) {
   );
 }
 
+// Only medium and high risk are shown; low is the default and needs no ink.
 export function Risk({ risk }: { risk: "low" | "med" | "high" }) {
-  return <span className={`badge risk-${risk}`}>{risk === "med" ? "medium" : risk} risk</span>;
+  if (risk === "low") return null;
+  const label = risk === "med" ? "Medium risk" : "High risk";
+  return <span className={`risk risk-${risk}`} title={label} aria-label={label} role="img" />;
 }
 
+// "core" is the default kind, so only tests and mechanical chunks get a tag.
 export function Kind({ kind }: { kind: string }) {
-  return <span className={`badge kind-${kind}`}>{kind}</span>;
+  return kind === "core" ? null : <span className={`badge kind-${kind}`}>{kind}</span>;
 }
 
 export function Issues({ issues }: { issues: Issue[] }) {
@@ -39,8 +43,7 @@ export function Issues({ issues }: { issues: Issue[] }) {
   return (
     <details className={`issues ${errors.length ? "has-errors" : ""}`} open={errors.length > 0}>
       <summary>
-        Plan check: {errors.length} error{errors.length === 1 ? "" : "s"}, {issues.length - errors.length} warning
-        {issues.length - errors.length === 1 ? "" : "s"}
+        {plural(errors.length, "error")}, {plural(issues.length - errors.length, "warning")}
       </summary>
       <ul>
         {issues.map((i, n) => (

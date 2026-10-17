@@ -4,6 +4,7 @@ import {
   hunkStatus,
   notesInHunks,
   setReviewed,
+  strategyLabel,
   type StrategyView,
 } from "../../shared/derive";
 import type { Hunk, LineNote, Plan, ReviewState } from "../../shared/schema";
@@ -75,15 +76,12 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
     }));
   const deleteNote = (id: string) => update((s) => ({ ...s, lineNotes: s.lineNotes.filter((n) => n.id !== id) }));
 
-  const features = current
-    ? plan.features.filter((f) => f.hunks.some((id) => current.chunk.hunks.includes(id)))
-    : [];
   const files = new Set(hunks.map((h) => h.file)).size;
 
   return (
     <div className="review">
       <aside className="sidebar">
-        <div className="muted small">{view.strategy.label}</div>
+        <div className="muted small">{strategyLabel(view.strategy)}</div>
         <ol>
           {view.chunks.map((c, i) => (
             <li key={c.chunk.id} className={i === index ? "on" : ""}>
@@ -100,81 +98,44 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
               <a href={routeHref({ page: "review", chunk: "skim" })}>
                 <StatusIcon status={hunkStatus(view.skim, reviewed)} />
                 <span className="n">~</span>
-                <span className="title">Skim: mechanical changes</span>
+                <span className="title">Skim</span>
                 <span className="size">{view.skim.length}</span>
               </a>
             </li>
           )}
         </ol>
         <p className="keys muted small">
-          <kbd>j</kbd>/<kbd>k</kbd> next/previous · <kbd>x</kbd> toggle reviewed · click a line number to comment
+          <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>x</kbd> done · click line # to note
         </p>
       </aside>
 
       <main className="page chunk">
-        {current ? (
-          <header className="chunk-head">
-            <div className="muted small">
-              Chunk {index === "skim" ? "" : (index as number) + 1} of {count} · {current.size} changed lines ·{" "}
-              {plural(files, "file")}
-            </div>
-            <h1>
-              <StatusIcon status={status} /> {current.chunk.title}
-            </h1>
-            <div className="badges">
-              <Kind kind={current.chunk.kind} /> <Risk risk={current.chunk.risk} />
-            </div>
+        <header className="chunk-head">
+          <h1>
+            <StatusIcon status={status} /> {current ? current.chunk.title : "Skim"}
+            {current && <Risk risk={current.chunk.risk} />}
+            {current && <Kind kind={current.chunk.kind} />}
+          </h1>
+          <div className="muted small">
+            {current ? `${index === "skim" ? "" : (index as number) + 1}/${count} · ${current.size} lines · ` : ""}
+            {plural(files, "file")}
+            {status === "partial" && <span className="warn"> · changed since review</span>}
+          </div>
+          {current && (
             <p className="intent">
               <Text>{current.chunk.intent}</Text>
             </p>
-            {status === "partial" && (
-              <p className="warn">Some hunks in this chunk are new or changed since you reviewed it.</p>
-            )}
-            {current.chunk.dependsOn.length > 0 && (
-              <p className="small">
-                Builds on:{" "}
-                {current.chunk.dependsOn.map((d, i) => {
-                  const j = view.chunks.findIndex((c) => c.chunk.id === d);
-                  return (
-                    <span key={d}>
-                      {i > 0 && ", "}
-                      <a href={routeHref({ page: "review", chunk: j })}>
-                        {j + 1}. {view.chunks[j]?.chunk.title ?? d}
-                      </a>
-                    </span>
-                  );
-                })}
-              </p>
-            )}
-            {features.length > 0 && (
-              <p className="small">
-                Part of: {features.map((f) => f.title).join(", ")}
-              </p>
-            )}
-            {current.chunk.reviewFocus.length > 0 && (
-              <div className="focus">
-                <strong>Check while reviewing</strong>
-                <ul>
-                  {current.chunk.reviewFocus.map((q) => (
-                    <li key={q}>
-                      <Text>{q}</Text>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </header>
-        ) : (
-          <header className="chunk-head">
-            <h1>
-              <StatusIcon status={status} /> Skim: mechanical changes
-            </h1>
-            <p className="intent">
-              Lockfiles, generated code, renames, binaries and whitespace, plus anything the plan marked as skim-only.
-              Expand a file if something looks off.
-            </p>
-          </header>
-        )}
+          )}
+          {current && current.chunk.reviewFocus.length > 0 && (
+            <ul className="focus">
+              {current.chunk.reviewFocus.map((q) => (
+                <li key={q}>
+                  <Text>{q}</Text>
+                </li>
+              ))}
+            </ul>
+          )}
+        </header>
 
         <DiffView
           key={`${view.strategy.id}-${index}`}
@@ -187,27 +148,30 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
         />
 
         <footer className="chunk-foot">
-          <label className="small muted" htmlFor="chunk-note">
-            Notes on this chunk
-          </label>
           <textarea
             id="chunk-note"
+            aria-label="Chunk note"
+            rows={1}
             value={state.chunkNotes[noteKey] ?? ""}
-            placeholder="Questions, concerns, follow-ups…"
+            placeholder="Note…"
             onChange={(e) => {
               const text = e.target.value;
               update((s) => ({ ...s, chunkNotes: { ...s.chunkNotes, [noteKey]: text } }));
             }}
           />
-          <div className="buttons">
-            <button disabled={prev === undefined || prev < 0} onClick={() => prev !== undefined && go(prev)}>
-              ← Previous
-            </button>
-            <button onClick={toggle}>{status === "done" ? "Mark not reviewed" : "Mark reviewed"}</button>
-            <button className="primary" onClick={markAndNext}>
-              {next === undefined ? "Mark reviewed & finish" : "Mark reviewed & next →"}
-            </button>
-          </div>
+          <button
+            aria-label="Previous"
+            disabled={prev === undefined || prev < 0}
+            onClick={() => prev !== undefined && go(prev)}
+          >
+            ←
+          </button>
+          <button onClick={toggle} aria-pressed={status === "done"}>
+            {status === "done" ? "Undo" : "Done"}
+          </button>
+          <button className="primary" onClick={markAndNext}>
+            {next === undefined ? "Done ✓" : "Done →"}
+          </button>
         </footer>
       </main>
     </div>

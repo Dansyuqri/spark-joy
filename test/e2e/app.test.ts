@@ -41,7 +41,7 @@ describe("review app", () => {
     // Plan page: both strategies, then pick one.
     await expect(page.getByRole("heading", { name: "Foundations first" }).isVisible()).resolves.toBe(true);
     await expect(page.getByRole("heading", { name: "By feature" }).isVisible()).resolves.toBe(true);
-    await page.getByRole("button", { name: "Review in this order" }).first().click();
+    await page.getByRole("button", { name: "Start" }).first().click();
 
     // Review page: first chunk.
     await page.getByRole("heading", { name: /Core/ }).waitFor();
@@ -49,12 +49,12 @@ describe("review app", () => {
 
     // Comment on the first changed line.
     await page.locator("tr.line.add td.no, tr.line.del td.no").first().click();
-    await page.getByPlaceholder(/Note on this line/).fill("Why this value?");
+    await page.getByPlaceholder(/Line note/).fill("Why this value?");
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await page.locator(".line-note .text", { hasText: "Why this value?" }).waitFor();
 
     await page.locator("#chunk-note").fill("Looks fine overall.");
-    await page.getByRole("button", { name: "Mark reviewed & next →" }).click();
+    await page.getByRole("button", { name: "Done →" }).click();
     await page.getByRole("heading", { name: /Rest/ }).waitFor();
     await page.locator(".progress span", { hasText: "1/3" }).waitFor();
 
@@ -72,10 +72,10 @@ describe("review app", () => {
 
     // Summary and export.
     await page.getByRole("link", { name: "Summary" }).click();
-    await page.getByRole("heading", { name: "What this PR does" }).waitFor();
+    await page.getByRole("heading", { name: "Features" }).waitFor();
     await page.getByRole("button", { name: "Export review.md" }).click();
     const md = await page.locator(".export textarea").inputValue();
-    expect(md).toContain("### [x] 1. Core");
+    expect(md).toContain("- [x] 1. Core");
     expect(md).toContain("Why this value?");
     expect(md).toContain("Looks fine overall.");
 

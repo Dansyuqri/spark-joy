@@ -73,8 +73,8 @@ export type Chunk = z.infer<typeof Chunk>;
 
 export const Strategy = z.object({
   id: z.string().min(1),
-  label: z.string().min(1),
-  description: z.string().optional(),
+  // Optional: the app names "layers" and "features" itself.
+  label: z.string().optional(),
   chunks: z.array(Chunk),
 });
 export type Strategy = z.infer<typeof Strategy>;

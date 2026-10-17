@@ -1,100 +1,80 @@
 ---
 name: spark-joy
-description: Break a large pull request / merge request into small, ordered, reviewable chunks and open a local review app where a human reviews it batch by batch, ticks chunks off, leaves notes, and sees an aggregated summary of everything the PR changes. Use when the user wants help reviewing a big PR/MR or branch, asks to "chunk", "split up" or "walk through" a diff for review, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, or types /spark-joy.
 ---
 
-# spark-joy: make a huge PR reviewable
+# spark-joy
 
-You turn a branch's diff into a **plan**: the same changes grouped into chunks a human can review one sitting at a time, in two alternative orders, plus a list of the features the PR delivers. The `spark-joy` CLI does everything deterministic (diffing, hunk ids, validation, the review app). Your job is the judgement: grouping, ordering and explaining.
+You group a branch's diff into reviewable chunks; the `spark-joy` CLI does the rest. The reader is a tired human. **Every word you write is load on them. Be terse.**
 
-Run `spark-joy` from inside the repository being reviewed. If it isn't on PATH, stop and ask the user to install it (`npm install -g github:dansyuqri/spark-joy`); don't guess at another package. Never edit the code under review.
+Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g github:dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
 
-## 1. Extract the diff
-
-Work out the base branch the PR/MR targets. If the user named one, use it; otherwise let `extract` pick origin's default branch. Then:
+## 1. Extract
 
 ```
-spark-joy extract [base]          # or --working for uncommitted changes
+spark-joy extract [base]    # base: the PR's target; omit to use origin's default. --working for uncommitted
 spark-joy outline
 ```
 
-`extract` diffs `merge-base(base, HEAD)..HEAD` and gives every hunk an id (`h001`, and `h012.1`, `h012.2` for pieces of a split large hunk). `outline` lists every file and hunk with its size, flags and first changed line. Hunks flagged `lockfile`, `generated`, `binary`, `whitespace-only`, `rename` or `mode` are mechanical: you may leave them out of the plan and they land in the skim bucket automatically.
+Every hunk gets an id (`h001`; pieces of a split hunk are `h012.1`). Hunks flagged `lockfile`, `generated`, `binary`, `whitespace-only`, `rename` or `mode` may be left out; they go to skim automatically. If the diff is empty, say so and stop.
 
-If the diff is empty, tell the user and stop.
-
-## 2. Understand the change
-
-Read the hunks before grouping them. Do not try to load the whole diff at once on a big PR:
+## 2. Read
 
 ```
-spark-joy show h001..h015         # a range
-spark-joy show h007 h012          # specific hunks (a parent id shows all its pieces)
-spark-joy show --file src/api.ts  # every hunk of one file
+spark-joy show h001..h015 | show h007 h012 | show --file src/api.ts
 ```
 
-Read surrounding source files when a hunk only makes sense in context. Work out: what the PR is for, which pieces everything else builds on (types, schemas, interfaces, config), which changes are user-visible capabilities, and which are pure plumbing or mechanical churn.
+Read in batches, never the whole diff at once. Open surrounding source files when you need context.
 
-## 3. Write the plan
-
-Write `.spark-joy/<run>/plan.json` (the path is printed by `extract`). Shape:
+## 3. Write `.spark-joy/<run>/plan.json`
 
 ```json
 {
-  "title": "Add team invitations",
-  "overview": "Two or three sentences a reviewer reads first: what the PR does and how it's built.",
+  "title": "Team invitations",
+  "overview": "Admins invite users by email; invites expire after 7 days.",
   "strategies": [
-    {
-      "id": "layers",
-      "label": "Foundations first",
-      "description": "Data model, then logic, then API and UI.",
-      "chunks": [
-        {
-          "id": "schema",
-          "title": "Invitation table and model",
-          "intent": "Adds the invitations table and its model. Everything else reads and writes through this.",
-          "kind": "core",
-          "hunks": ["h004", "h005", "h012.1"],
-          "dependsOn": [],
-          "reviewFocus": ["Is the unique index on (team_id, email) right for re-invites?"],
-          "risk": "med"
-        }
-      ]
-    },
-    { "id": "features", "label": "By feature", "description": "One user-visible capability at a time.", "chunks": [] }
+    { "id": "layers", "chunks": [
+      { "id": "schema", "title": "Invitations table", "intent": "Stores pending invites; everything else reads it.",
+        "hunks": ["h004", "h005"], "risk": "med",
+        "reviewFocus": ["Unique (team_id, email) blocks re-invites?"] }
+    ]},
+    { "id": "features", "chunks": [] }
   ],
-  "features": [
-    { "title": "Invite by email", "description": "Admins can invite someone to a team by email; the invite expires after 7 days.", "hunks": ["h004", "h007", "h009"] }
-  ],
-  "skim": ["h020", "h021"]
+  "features": [{ "title": "Invite by email", "description": "Admins invite by email; expires in 7 days.", "hunks": ["h004", "h007"] }],
+  "skim": ["h020"]
 }
 ```
 
-### The two strategies
+**Word limits** (`validate` fails over them):
 
-Always write both; the reviewer picks one in the app. Each strategy must place **every non-mechanical hunk exactly once**, in a chunk or in `skim`.
+| field | max words |
+|---|---|
+| title, chunk title | 6 |
+| overview | 25 |
+| intent | 15 |
+| reviewFocus | 2 items × 10 |
+| feature title / description | 5 / 12 |
 
-- **`layers`, foundations first:** order by dependency. Types, schemas and config come first, then core logic, then integration (API, jobs, wiring), then call sites and UI, then tests that didn't fit with their code, then docs. A reviewer should never meet a name before the chunk that defines it.
-- **`features`, by feature:** one chunk per capability, cutting vertically through the layers, so the reviewer follows one behaviour end to end. Shared plumbing that several features rely on goes first, as its own chunk.
+**Style:** write like a commit subject. Fragments are fine. Say *why* or *what to watch*, never restate the code. No filler ("This chunk…", "Introduces…", "Various…"). Omit `reviewFocus` when nothing is risky.
 
-### Chunk rules
+**Two strategies, both required.** Each places every non-mechanical hunk exactly once, in a chunk or in `skim`.
+- `layers`: dependency order: types/schema → logic → wiring → callers/UI → leftover tests → docs.
+- `features`: one chunk per capability, end to end, with shared plumbing first.
 
-- **Size:** aim for 100–300 changed lines; never over 400 (validate warns). One chunk is one idea a reviewer can hold in their head. Split by sub-concern rather than by file count.
-- **Cohesion:** a hunk goes with the code it belongs to, not with its neighbours in the file. Split hunks (`h012.1`, `h012.2`) can go to different chunks.
-- **Tests:** in `features`, put a feature's tests in its chunk. In `layers`, keep small tests with the code they cover; a large test suite gets its own chunk after the code.
-- **`dependsOn`:** ids of earlier chunks the reviewer must understand first. Only earlier chunks; validate rejects forward references.
-- **`intent`:** 1–3 sentences on what changes and why. Don't paraphrase the code line by line.
-- **`reviewFocus`:** 1–4 specific questions about the risky parts of this chunk, naming the functions or conditions involved, e.g. "Does `retryUpload` stop after the 3rd failure, or loop forever on 4xx?". Never generic ("check for bugs", "verify tests pass").
-- **`risk`:** `high` for auth, permissions, security, money, data migrations or deletion, concurrency, and public API contracts; `med` for behaviour changes in shared code; `low` otherwise.
-- **`kind`:** `core`, `test`, or `mechanical`.
-- **Titles:** short and specific ("Retry failed uploads with backoff", not "Upload changes").
+**Chunks**
+- Size: 100–300 changed lines, never over 400. One idea per chunk.
+- A hunk goes with the code it belongs to; pieces of a split hunk may go to different chunks.
+- Tests go with the code they cover, unless they're large.
+- `dependsOn` may only name earlier chunks.
+- `risk`:
+  - `high`: auth, security, money, migrations/deletion, concurrency, public API;
+  - `med`: behaviour change in shared code;
+  - `low`: everything else, and the default.
+- `kind`: `core` (the default), `test` or `mechanical`.
 
-### Skim
+**skim** is only for mechanical churn: moves, formatting, import order, version bumps. **Never logic.**
 
-`skim` is for hunks that need a glance, not a read: renames and moves, formatting, import reordering, version bumps, regenerated files the tooling didn't flag. **Never put logic in skim**, however small; it's the one place a reviewer is told not to look closely. Validate warns about large non-mechanical skim hunks.
-
-### Features
-
-`features` is the aggregated "what this PR does" that the reviewer sees on the Plan and Summary pages. List the capabilities or behaviour changes a user or another system would notice, plus significant internal changes (a new cache layer, a migration). Each lists the hunks that implement it; a hunk may belong to several features. Every non-mechanical hunk should belong to at least one feature.
+**features** list what the PR does, as a user or caller would see it. Every non-mechanical hunk belongs to at least one feature.
 
 ## 4. Validate
 
@@ -102,18 +82,12 @@ Always write both; the reviewer picks one in the app. Each strategy must place *
 spark-joy validate
 ```
 
-Fix every error and re-run until it reports `plan ok`. Treat warnings seriously too: split oversized chunks and check the hunks it says aren't linked to a feature. Don't stop at a failing validation.
+Fix every error and re-run until it says `plan ok`. Fix the warnings too.
 
-## 5. Open the review app
+## 5. Serve
 
-Start the server in the background (it runs until stopped):
+Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more.
 
-```
-spark-joy serve
-```
+## After new commits
 
-Give the user the URL it prints (default http://127.0.0.1:4848), with a two-line overview: what the PR does, and how many chunks each order has. In the app they choose an order, review chunk by chunk (`j`/`k` to move, `x` to mark reviewed, click a line number to comment), and export `review.md` from the Summary page to paste into the GitHub or GitLab PR.
-
-## Updating after new commits
-
-When the branch moves, re-run `spark-joy extract`. Hunk ids are reassigned, so `validate` will report unknown or missing ids. Rewrite the plan from the new `outline`, then validate. Review progress is stored by hunk content, so hunks the reviewer already signed off stay signed off; changed ones show as "changed since review". The app reloads the plan when its tab regains focus.
+Re-run `extract`, rewrite the plan from the new `outline`, and validate. The reviewer's progress carries over for unchanged hunks.

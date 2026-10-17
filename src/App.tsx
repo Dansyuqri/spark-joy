@@ -101,7 +101,7 @@ export function App() {
     [data, state],
   );
 
-  if (loadError && !data) return <div className="empty">Could not load the run: {loadError}</div>;
+  if (loadError && !data) return <div className="empty">Can't load run: {loadError}</div>;
   if (!data || !state) return <div className="empty">Loading…</div>;
 
   const { meta } = data;
@@ -115,13 +115,11 @@ export function App() {
         <div className="brand">
           <span className="spark">✦</span> spark-joy
         </div>
-        <div className="run" title={`${meta.base} (${meta.mergeBase}) → ${meta.headSha}`}>
-          <strong>{data.plan?.title ?? meta.branch}</strong>
-          <span className="muted">
-            {" "}
-            {meta.base} → {meta.working ? "working tree" : meta.headSha.slice(0, 8)} · +{meta.stats.added} −
-            {meta.stats.removed} · {meta.stats.files} files
-          </span>
+        <div
+          className="run"
+          title={`${meta.base} → ${meta.working ? "working tree" : meta.headSha.slice(0, 8)} · +${meta.stats.added} −${meta.stats.removed} · ${meta.stats.files} files`}
+        >
+          {data.plan?.title ?? meta.branch}
         </div>
         <nav className="tabs">
           <a className={current.page === "plan" ? "on" : ""} href="#/plan">
@@ -151,16 +149,10 @@ export function App() {
 
       {!data.hasPlan ? (
         <div className="empty">
-          <h2>No plan yet</h2>
-          <p>
-            Ask Claude to run <code>/spark-joy</code>, or write <code>.spark-joy/{meta.run}/plan.json</code> and run{" "}
-            <code>spark-joy validate</code>. This page reloads the plan when you come back to it.
-          </p>
-          <Issues issues={data.issues} />
+          No plan yet. Run <code>/spark-joy</code> in Claude Code.
         </div>
       ) : !data.plan || !view ? (
         <div className="empty">
-          <h2>plan.json doesn't match the schema</h2>
           <Issues issues={data.issues} />
         </div>
       ) : current.page === "plan" ? (

@@ -6,6 +6,21 @@ export const CHUNK_LINE_BUDGET = 400;
 // skimmed code is code nobody reads closely.
 const SKIM_WARN_LINES = 30;
 
+// Word budgets for plan text. Every word here is one more thing a reviewer
+// reads before the code, so going over is an error, not a warning.
+export const BUDGET = {
+  planTitle: 6,
+  overview: 25,
+  chunkTitle: 6,
+  intent: 15,
+  focusItems: 2,
+  focusWords: 10,
+  featureTitle: 5,
+  featureDescription: 12,
+} as const;
+
+export const words = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
 export interface Issue {
   level: "error" | "warning";
   where: string;
@@ -34,6 +49,12 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
   const issues: Issue[] = [];
   const error = (where: string, message: string) => issues.push({ level: "error", where, message });
   const warn = (where: string, message: string) => issues.push({ level: "warning", where, message });
+
+  const tooLong = (where: string, what: string, text: string | undefined, max: number) => {
+    if (text !== undefined && words(text) > max) error(where, `${what} is ${words(text)} words; max ${max}`);
+  };
+  tooLong("plan", "title", plan.title, BUDGET.planTitle);
+  tooLong("plan", "overview", plan.overview, BUDGET.overview);
 
   const byId = new Map(hunks.map((h) => [h.id, h]));
   const describe = (h: Hunk) => `${h.id} (${h.file} +${h.added} -${h.removed})`;
@@ -66,6 +87,11 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
       if (chunkIndex.has(c.id)) error(cw, "duplicate chunk id");
       chunkIndex.set(c.id, i);
       if (c.hunks.length === 0) error(cw, "chunk has no hunks");
+      tooLong(cw, "title", c.title, BUDGET.chunkTitle);
+      tooLong(cw, "intent", c.intent, BUDGET.intent);
+      if (c.reviewFocus.length > BUDGET.focusItems)
+        error(cw, `${c.reviewFocus.length} reviewFocus items; max ${BUDGET.focusItems}`);
+      c.reviewFocus.forEach((q, n) => tooLong(cw, `reviewFocus ${n + 1}`, q, BUDGET.focusWords));
 
       const hs: Hunk[] = [];
       for (const id of c.hunks) {
@@ -102,6 +128,8 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
   plan.features.forEach((f, i) => {
     const fw = `feature ${i + 1} (${f.title})`;
     if (f.hunks.length === 0) error(fw, "feature has no hunks");
+    tooLong(fw, "title", f.title, BUDGET.featureTitle);
+    tooLong(fw, "description", f.description, BUDGET.featureDescription);
     for (const id of f.hunks) {
       if (!byId.has(id)) error(fw, `unknown hunk id ${id}`);
       inFeature.add(id);

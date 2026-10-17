@@ -88,13 +88,13 @@ describe("plan, review and export", () => {
 
     const md = exportMarkdown(await readMeta(p), hunks, plan!, state);
     expect(md).toContain("# Review: Math tweaks");
-    expect(md).toContain("Progress: 1/3 chunks");
-    expect(md).toContain("### [x] 1. Core");
-    expect(md).toContain("### [ ] 2. Rest");
-    expect(md).toContain("Why 33?");
-    expect(md).toContain(`\`${first.file}:${first.newStart}\`: Check this`);
-    expect(md).toMatch(/- \[~\] \*\*New return values\*\*/);
-    expect(md).toContain("Skimmed (mechanical)");
+    expect(md).toMatch(/^1\/3 chunks · \d+% lines/m);
+    expect(md).toMatch(/^- \[x\] 1\. Core \(\d+\)$/m);
+    expect(md).toMatch(/^- \[ \] 2\. Rest/m);
+    expect(md).toContain("  > Why 33?");
+    expect(md).toContain(`  - \`${first.file}:${first.newStart}\` Check this`);
+    expect(md).toMatch(/^- \[~\] New return values \(/m);
+    expect(md).toMatch(/^- \[ \] Skim \(\d+ hunks\)$/m);
   });
 
   it("keeps review progress for unchanged hunks after new commits", async () => {

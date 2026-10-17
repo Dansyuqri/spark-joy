@@ -11,7 +11,7 @@ import {
 import type { Plan, ReviewState } from "../../shared/schema";
 import { exportReview, type RunData } from "../api";
 import { routeHref } from "../App";
-import { StatusIcon, Text } from "./bits";
+import { StatusIcon } from "./bits";
 
 interface Props {
   data: RunData;
@@ -35,122 +35,92 @@ export function SummaryPage({ data, plan, view, state, flush }: Props) {
       lines: notesInHunks(c.hunks, state.lineNotes),
     }))
     .filter((x) => x.note || x.lines.length);
+  const noteCount = chunksWithNotes.reduce((n, x) => n + (x.note ? 1 : 0) + x.lines.length, 0);
+  const pct = p.linesTotal ? Math.round((100 * p.linesDone) / p.linesTotal) : 100;
 
   return (
     <main className="page summary-page">
-      <section className="totals">
-        <div>
-          <div className="big">
-            {p.done}/{p.total}
-          </div>
-          <div className="muted">chunks reviewed</div>
-        </div>
-        <div>
-          <div className="big">{p.linesTotal ? Math.round((100 * p.linesDone) / p.linesTotal) : 100}%</div>
-          <div className="muted">
-            of {p.linesTotal} changed lines
-          </div>
-        </div>
-        <div>
-          <div className="big">{state.lineNotes.length + chunksWithNotes.filter((x) => x.note).length}</div>
-          <div className="muted">notes</div>
-        </div>
-      </section>
+      <p className="totals">
+        <strong>
+          {p.done}/{p.total}
+        </strong>{" "}
+        chunks · <strong>{pct}%</strong> lines · <strong>{noteCount}</strong> {noteCount === 1 ? "note" : "notes"}
+      </p>
 
-      {plan.overview && (
-        <p className="overview">
-          <Text>{plan.overview}</Text>
-        </p>
-      )}
-
-      <h2>What this PR does</h2>
-      {plan.features.length === 0 ? (
-        <p className="muted">The plan lists no features.</p>
-      ) : (
-        <ul className="features">
-          {plan.features.map((f) => {
-            const status = hunkStatus(featureHunks(f, data.hunks), reviewed);
-            const chunks = featureChunks(f, view);
-            return (
-              <li key={f.title}>
-                <StatusIcon status={status} /> <strong>{f.title}</strong>
-                <div className="muted">
-                  <Text>{f.description}</Text>
-                </div>
-                <div className="small">
-                  {chunks.map((c, i) => (
-                    <span key={c.chunk.id}>
-                      {i > 0 && " · "}
-                      <a href={routeHref({ page: "review", chunk: c.index })}>
-                        {c.index + 1}. {c.chunk.title}
-                      </a>
-                    </span>
+      {plan.features.length > 0 && (
+        <>
+          <h2>Features</h2>
+          <ul className="features">
+            {plan.features.map((f) => (
+              <li key={f.title} title={f.description}>
+                <StatusIcon status={hunkStatus(featureHunks(f, data.hunks), reviewed)} /> {f.title}
+                <span className="chunk-refs">
+                  {featureChunks(f, view).map((c) => (
+                    <a key={c.chunk.id} href={routeHref({ page: "review", chunk: c.index })} title={c.chunk.title}>
+                      {c.index + 1}
+                    </a>
                   ))}
-                </div>
+                </span>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        </>
       )}
 
-      <h2>Notes</h2>
-      {chunksWithNotes.length === 0 ? (
-        <p className="muted">No notes yet.</p>
-      ) : (
-        chunksWithNotes.map(({ c, note, lines }) => (
-          <section key={c.chunk.id} className="note-group">
-            <h3>
+      {chunksWithNotes.length > 0 && (
+        <>
+          <h2>Notes</h2>
+          {chunksWithNotes.map(({ c, note, lines }) => (
+            <section key={c.chunk.id} className="note-group">
               <a href={routeHref({ page: "review", chunk: c.index })}>
                 {c.index + 1}. {c.chunk.title}
               </a>
-            </h3>
-            {note && <p className="pre">{note}</p>}
-            <ul>
-              {lines.map((n) => (
-                <li key={n.id}>
-                  <code>
-                    {n.file}:{n.line}
-                  </code>
-                  {n.side === "old" && <span className="muted"> (old)</span>} {n.text}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
+              {note && <p className="pre">{note}</p>}
+              <ul>
+                {lines.map((n) => (
+                  <li key={n.id}>
+                    <code>
+                      {n.file}:{n.line}
+                    </code>{" "}
+                    {n.text}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </>
       )}
 
-      <h2>Export</h2>
-      <p className="muted">
-        Writes <code>review.md</code> to the run folder, ready to paste into a GitHub or GitLab comment.
+      <p>
+        <button
+          className="primary"
+          onClick={async () => {
+            try {
+              await flush();
+              setExported(await exportReview());
+              setExportError(undefined);
+            } catch (e) {
+              setExportError((e as Error).message);
+            }
+          }}
+        >
+          Export review.md
+        </button>{" "}
+        {exported && (
+          <button
+            onClick={async () => {
+              await navigator.clipboard.writeText(exported.markdown);
+              setCopied(true);
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
       </p>
-      <button
-        className="primary"
-        onClick={async () => {
-          try {
-            await flush();
-            setExported(await exportReview());
-            setExportError(undefined);
-          } catch (e) {
-            setExportError((e as Error).message);
-          }
-        }}
-      >
-        Export review.md
-      </button>
       {exportError && <p className="warn">{exportError}</p>}
       {exported && (
         <div className="export">
-          <p className="small muted">
-            Wrote {exported.path}{" "}
-            <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(exported.markdown);
-                setCopied(true);
-              }}
-            >
-              {copied ? "Copied" : "Copy markdown"}
-            </button>
-          </p>
+          <p className="small muted">{exported.path}</p>
           <textarea readOnly value={exported.markdown} />
         </div>
       )}

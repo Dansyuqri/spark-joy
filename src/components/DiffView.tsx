@@ -64,7 +64,7 @@ export function DiffView({ hunks, notes, onAdd, onEdit, onDelete, collapsed }: P
                     </tr>
                     {h.lines.length === 0 && (
                       <tr className="placeholder">
-                        <td colSpan={3}>No textual changes to show.</td>
+                        <td colSpan={3}>No text diff.</td>
                       </tr>
                     )}
                     {numberLines(h).map((l, i) => {
@@ -77,7 +77,7 @@ export function DiffView({ hunks, notes, onAdd, onEdit, onDelete, collapsed }: P
                             <td
                               className="no"
                               onClick={() => anchor && setComposing(anchor)}
-                              title={anchor ? "Add a note on this line" : undefined}
+                              title={anchor ? "Add note" : undefined}
                             >
                               {l.oldNo ?? ""}
                             </td>
@@ -153,7 +153,7 @@ function NoteBox(props: { initial: string; autoFocus?: boolean; onSave: (t: stri
       <textarea
         autoFocus={props.autoFocus}
         value={text}
-        placeholder="Note on this line… (⌘/Ctrl+Enter to save, Esc to cancel)"
+        placeholder="Line note… (⌘↵ save, Esc cancel)"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();

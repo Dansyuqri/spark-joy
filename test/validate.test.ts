@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Hunk } from "../shared/schema";
-import { validatePlan } from "../shared/validate";
+import { BUDGET, validatePlan, words } from "../shared/validate";
 
 function hunk(id: string, size = 10, flags: Hunk["flags"] = []): Hunk {
   return {
@@ -100,5 +100,26 @@ describe("validatePlan", () => {
     const p = plan();
     p.strategies = p.strategies.slice(0, 1);
     expect(warnings(validatePlan(p, hunks)).join()).toMatch(/only one strategy/);
+  });
+
+  it("rejects text over the word budgets", () => {
+    const long = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+    const p = plan({ overview: long(BUDGET.overview + 1), features: [{ title: long(6), description: "d", hunks: ["h001", "h002", "h003"] }] });
+    p.strategies[0]!.chunks[0] = {
+      ...chunk("a", ["h001"]),
+      intent: long(BUDGET.intent + 1),
+      reviewFocus: ["one", "two", long(11)],
+    } as ReturnType<typeof chunk>;
+    const msgs = errors(validatePlan(p, hunks)).join("\n");
+    expect(msgs).toMatch(/overview is 26 words; max 25/);
+    expect(msgs).toMatch(/intent is 16 words; max 15/);
+    expect(msgs).toMatch(/3 reviewFocus items; max 2/);
+    expect(msgs).toMatch(/reviewFocus 3 is 11 words; max 10/);
+    expect(msgs).toMatch(/title is 6 words; max 5/);
+  });
+
+  it("counts words on whitespace", () => {
+    expect(words("  a  b\nc ")).toBe(3);
+    expect(words("")).toBe(0);
   });
 });
