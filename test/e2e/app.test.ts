@@ -9,7 +9,9 @@ import { serve } from "../../cli/lib/server";
 import { makeRepo, planFor } from "../fixture";
 
 const appDir = join(__dirname, "../../dist/app");
-const executablePath = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
+// Use a preinstalled Chromium when there is one; otherwise Playwright's own download (CI).
+const chromiumPath = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
+const executablePath = existsSync(chromiumPath) ? chromiumPath : undefined;
 
 let root: string;
 let browser: Browser;
