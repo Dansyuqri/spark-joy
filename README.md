@@ -1,12 +1,21 @@
-# spark-joy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" width="240" alt="A drawer of neatly folded diffs, one sparking joy">
+  </picture>
+</p>
 
-Skill for making PR reviews spark more joy.
+<h1 align="center">spark-joy</h1>
+
+<p align="center"><em>Does this PR spark joy?</em></p>
+
+Marie Kondo tidies a home one category at a time, keeping only what sparks joy. spark-joy does the same for a pull request: fold a huge diff into small, tidy chunks and review them one at a time, until every PR sparks joy once again.
 
 AI-assisted pull requests are often thousands of lines long, too big to review properly in one go. spark-joy has Claude break a big PR or MR into small, ordered chunks, then opens a local app where you review them one batch at a time. You tick chunks off, leave notes, and finish with a summary of everything the PR changes.
 
 It works from plain git, so it works the same for GitHub, GitLab or anything else. Nothing is posted anywhere; your notes export as markdown you can paste into the PR.
 
-Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
+Inspired by Marie Kondo's KonMari method and [mr-cast](https://github.com/phanshiyu/mr-cast).
 
 ## How it works
 
