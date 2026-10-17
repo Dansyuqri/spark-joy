@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <img src="assets/logo.svg" width="240" alt="A drawer of neatly folded diffs, one sparking joy">
-  </picture>
+  <img src="assets/logo.svg" width="240" alt="A drawer of neatly folded diffs, one sparking joy">
 </p>
 
 <h1 align="center">spark-joy</h1>
