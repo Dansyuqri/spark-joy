@@ -7,7 +7,7 @@ description: Break a large pull request / merge request into small, ordered, rev
 
 You turn a branch's diff into a **plan**: the same changes grouped into chunks a human can review one sitting at a time, in two alternative orders, plus a list of the features the PR delivers. The `spark-joy` CLI does everything deterministic (diffing, hunk ids, validation, the review app). Your job is the judgement: grouping, ordering and explaining.
 
-Use `spark-joy` if it is on PATH, otherwise `npx -y spark-joy`. Run all commands from inside the repository being reviewed. Never edit the code under review.
+Run `spark-joy` from inside the repository being reviewed. If it isn't on PATH, stop and ask the user to install it (`npm install -g github:dansyuqri/spark-joy`); don't guess at another package. Never edit the code under review.
 
 ## 1. Extract the diff
 

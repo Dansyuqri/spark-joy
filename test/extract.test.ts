@@ -123,3 +123,21 @@ describe("plan, review and export", () => {
 });
 
 const fn = () => "export function extra() {}\n";
+
+describe("buildHunks", () => {
+  it("doesn't split lockfiles or generated files", async () => {
+    const { buildHunks } = await import("../cli/lib/extract");
+    const lines = Array.from({ length: 500 }, (_, i) => `+  "dep${i}": "1.0.${i}",`);
+    const file = (name: string) => ({
+      file: name,
+      status: "added" as const,
+      binary: false,
+      modeChange: false,
+      hunks: [{ header: "@@ -0,0 +1,500 @@", oldStart: 0, oldLines: 0, newStart: 1, newLines: 500, lines }],
+    });
+    const hs = buildHunks([file("package-lock.json"), file("dist/bundle.js"), file("src/data.ts")]);
+    expect(hs.filter((h) => h.file === "package-lock.json")).toHaveLength(1);
+    expect(hs.filter((h) => h.file === "dist/bundle.js")).toHaveLength(1);
+    expect(hs.filter((h) => h.file === "src/data.ts").length).toBeGreaterThan(1);
+  });
+});

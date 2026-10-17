@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "npm run build:cli && npm run build:app",
+    "prepare": "npm run build",
     "build:cli": "tsup",
     "build:app": "vite build",
     "dev:app": "vite",

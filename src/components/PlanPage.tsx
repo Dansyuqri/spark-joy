@@ -2,7 +2,7 @@ import { hunkStatus, strategyView } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
-import { Issues, Kind, Risk, StatusIcon, plural } from "./bits";
+import { Issues, Kind, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -17,7 +17,11 @@ export function PlanPage({ data, plan, state, update }: Props) {
 
   return (
     <main className="page plan-page">
-      {plan.overview && <p className="overview">{plan.overview}</p>}
+      {plan.overview && (
+        <p className="overview">
+          <Text>{plan.overview}</Text>
+        </p>
+      )}
       <Issues issues={data.issues} />
       <h2>Choose a review order</h2>
       <p className="muted">
@@ -73,7 +77,10 @@ export function PlanPage({ data, plan, state, update }: Props) {
             {plan.features.map((f) => (
               <li key={f.title}>
                 <strong>{f.title}</strong>
-                <span className="muted"> {f.description}</span>
+                <span className="muted">
+                  {" "}
+                  <Text>{f.description}</Text>
+                </span>
               </li>
             ))}
           </ul>

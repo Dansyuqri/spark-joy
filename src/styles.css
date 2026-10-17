@@ -193,10 +193,11 @@ textarea {
 
 /* Shared bits */
 .status {
-  display: inline-block;
+  display: inline-flex;
+  align-self: center;
+  vertical-align: -2px;
   width: 1.2em;
-  text-align: center;
-  font-weight: 700;
+  justify-content: center;
 }
 .status.done {
   color: var(--done);
@@ -414,8 +415,10 @@ textarea {
   font-size: 12.5px;
   table-layout: fixed;
 }
+.file col.no-col {
+  width: 52px;
+}
 .file td.no {
-  width: 48px;
   text-align: right;
   padding: 0 8px;
   color: var(--muted);

@@ -34,6 +34,8 @@ export function App() {
 
   const refresh = useCallback(async () => {
     try {
+      // Let in-flight saves land first, so we don't read back older state.
+      await inflight.current;
       const d = await loadRun();
       setData(d);
       // Local edits that haven't been saved yet win over what's on disk.

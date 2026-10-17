@@ -31,7 +31,8 @@ export function buildHunks(files: FileDiff[], attrGenerated: ReadonlySet<string>
       const hunkFlags = [...flags];
       if (flag && !hunkFlags.includes(flag)) hunkFlags.push(flag);
       if (whitespaceOnly(raw)) hunkFlags.push("whitespace-only");
-      const pieces = splitHunk(raw, splitAt);
+      // Nobody reads lockfiles or generated code line by line, so don't cut them up.
+      const pieces = flags.includes("lockfile") || flags.includes("generated") ? [raw] : splitHunk(raw, splitAt);
       for (const p of pieces) {
         pending.push({
           file: f.file,

@@ -11,7 +11,7 @@ import {
 import type { Plan, ReviewState } from "../../shared/schema";
 import { exportReview, type RunData } from "../api";
 import { routeHref } from "../App";
-import { StatusIcon } from "./bits";
+import { StatusIcon, Text } from "./bits";
 
 interface Props {
   data: RunData;
@@ -57,7 +57,11 @@ export function SummaryPage({ data, plan, view, state, flush }: Props) {
         </div>
       </section>
 
-      {plan.overview && <p className="overview">{plan.overview}</p>}
+      {plan.overview && (
+        <p className="overview">
+          <Text>{plan.overview}</Text>
+        </p>
+      )}
 
       <h2>What this PR does</h2>
       {plan.features.length === 0 ? (
@@ -70,7 +74,9 @@ export function SummaryPage({ data, plan, view, state, flush }: Props) {
             return (
               <li key={f.title}>
                 <StatusIcon status={status} /> <strong>{f.title}</strong>
-                <div className="muted">{f.description}</div>
+                <div className="muted">
+                  <Text>{f.description}</Text>
+                </div>
                 <div className="small">
                   {chunks.map((c, i) => (
                     <span key={c.chunk.id}>

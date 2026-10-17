@@ -49,6 +49,11 @@ export function DiffView({ hunks, notes, onAdd, onEdit, onDelete, collapsed }: P
               </span>
             </summary>
             <table>
+              <colgroup>
+                <col className="no-col" />
+                <col className="no-col" />
+                <col />
+              </colgroup>
               <tbody>
                 {hs.map((h) => (
                   <Fragment key={h.id}>

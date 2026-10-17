@@ -10,7 +10,7 @@ import type { Hunk, LineNote, Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
 import { DiffView } from "./DiffView";
-import { Kind, Risk, StatusIcon, plural } from "./bits";
+import { Kind, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -124,7 +124,9 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
             <div className="badges">
               <Kind kind={current.chunk.kind} /> <Risk risk={current.chunk.risk} />
             </div>
-            <p className="intent">{current.chunk.intent}</p>
+            <p className="intent">
+              <Text>{current.chunk.intent}</Text>
+            </p>
             {status === "partial" && (
               <p className="warn">Some hunks in this chunk are new or changed since you reviewed it.</p>
             )}
@@ -154,7 +156,9 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
                 <strong>Check while reviewing</strong>
                 <ul>
                   {current.chunk.reviewFocus.map((q) => (
-                    <li key={q}>{q}</li>
+                    <li key={q}>
+                      <Text>{q}</Text>
+                    </li>
                   ))}
                 </ul>
               </div>
