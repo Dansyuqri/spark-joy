@@ -9,6 +9,11 @@
 
 <p align="center"><em>Make PRs spark joy again.</em></p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/@dansyuqri/spark-joy"><img src="https://img.shields.io/npm/v/@dansyuqri/spark-joy?style=flat-square&label=npm" alt="npm version"></a>
+  <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
+</p>
+
 AI-assisted pull requests are often thousands of lines long, too big to review properly in one go. spark-joy has Claude break a big PR or MR into small, ordered chunks, then opens a local app where you review them one batch at a time. You tick chunks off, leave notes, and finish with a summary of everything the PR changes.
 
 It works from plain git, so it works the same for GitHub, GitLab or anything else. Nothing is posted anywhere; your notes export as markdown you can paste into the PR.
@@ -34,7 +39,7 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 
 ## Install
 
-Requires Node 22 or newer and git.
+Requires Node 22 or newer and git. Published on npm as [`@dansyuqri/spark-joy`](https://www.npmjs.com/package/@dansyuqri/spark-joy).
 
 ```sh
 npm install -g @dansyuqri/spark-joy
@@ -92,11 +97,3 @@ Layout:
 - `src/`: the React review app.
 - `skill/`: the Claude Code skill.
 - `test/`: Vitest, with a fixture git repo.
-
-## Releasing
-
-Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored anywhere.
-
-1. **First release only, by hand.** npm needs the package to exist before a trusted publisher can be added: `npm login`, then `npm publish`.
-2. **Once, on npmjs.com:** open the package's Settings → Trusted publishing → GitHub Actions. Enter owner `Dansyuqri`, repository `spark-joy` and workflow `release.yml` (case-sensitive); leave the environment blank.
-3. **Every release after that:** `npm version patch` (or `minor`/`major`), then `git push --follow-tags`. The `v*` tag runs `.github/workflows/release.yml`, which tests and publishes with provenance.
