@@ -25,3 +25,4 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const loadRun = () => call<RunData>("GET", "/api/run");
 export const saveState = (state: ReviewState) => call<ReviewState>("PUT", "/api/state", state);
 export const exportReview = () => call<{ path: string; markdown: string }>("POST", "/api/export");
+export const loadFile = (path: string) => call<{ lines: string[] }>("GET", `/api/file?path=${encodeURIComponent(path)}`);

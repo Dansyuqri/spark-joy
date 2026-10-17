@@ -693,3 +693,29 @@ tr.note-row td {
   fill: var(--ink);
   font-size: 11px;
 }
+
+/* Expandable context */
+tr.gap-row td,
+tr.foreign-row td {
+  background: var(--hunk-bg);
+  color: var(--muted);
+  padding: 2px 8px;
+  font-size: 12px;
+}
+tr.gap-row button {
+  font-size: 12px;
+  padding: 1px 8px;
+  margin-right: 6px;
+}
+tr.line.expanded td.code,
+tr.line.expanded td.no {
+  opacity: 0.75;
+}
+tr.line.expanded td.no {
+  cursor: default;
+}
+.file summary .view-file {
+  margin-left: 8px;
+  font-size: 12px;
+  padding: 1px 8px;
+}

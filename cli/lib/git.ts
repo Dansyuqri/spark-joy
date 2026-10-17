@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
+import { lstat, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
+import type { Meta } from "../../shared/schema";
 
 const exec = promisify(execFile);
 
@@ -80,4 +83,15 @@ export async function generatedByAttr(cwd: string, files: string[]): Promise<Set
     if (parts[i + 2] === "set" || parts[i + 2] === "true") result.add(parts[i]!);
   }
   return result;
+}
+
+// A changed file as of the diff's end: HEAD, the index, or the working tree.
+export async function fileText(root: string, meta: Meta, path: string): Promise<string> {
+  const source = meta.source ?? (meta.working ? "working" : "pr");
+  if (source === "working" || source === "uncommitted") {
+    // Never follow a symlink out of the repo.
+    if ((await lstat(join(root, path))).isSymbolicLink()) throw new Error(`${path} is a symlink`);
+    return readFile(join(root, path), "utf8");
+  }
+  return git(root, ["show", `${source === "staged" ? "" : meta.headSha}:${path}`]);
 }

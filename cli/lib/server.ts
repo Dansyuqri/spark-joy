@@ -4,6 +4,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { ReviewState } from "../../shared/schema";
 import { validatePlan } from "../../shared/validate";
 import { exportMarkdown } from "./export";
+import { fileText } from "./git";
 import { readHunks, readLinks, readMeta, readPlanRaw, readState, writeJson, type RunPaths } from "./runs";
 
 const TYPES: Record<string, string> = {
@@ -16,6 +17,7 @@ const TYPES: Record<string, string> = {
 };
 
 const MAX_BODY = 20 * 1024 * 1024;
+const MAX_FILE = 2 * 1024 * 1024;
 
 async function body(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -80,6 +82,22 @@ export async function serve(opts: ServeOptions): Promise<{ url: string; close: (
       }
 
       if (url.pathname === "/api/run" && req.method === "GET") return send(res, 200, await loadRun(paths));
+
+      // Full text of a changed file, so the app can expand context. Only files
+      // in the diff, so this can't read anything else on disk.
+      if (url.pathname === "/api/file" && req.method === "GET") {
+        const path = url.searchParams.get("path") ?? "";
+        const [meta, hunks] = await Promise.all([readMeta(paths), readHunks(paths)]);
+        const hs = hunks.filter((h) => h.file === path);
+        if (!hs.length || hs[0]!.status === "deleted" || hs.some((h) => h.flags.includes("binary")))
+          return send(res, 404, { error: "no text for that file" });
+        const text = await fileText(meta.repoRoot, meta, path).catch(() => undefined);
+        if (text === undefined) return send(res, 404, { error: "no text for that file" });
+        if (text.length > MAX_FILE || text.includes("\0")) return send(res, 404, { error: "file too large or binary" });
+        const lines = text.split("\n");
+        if (lines.at(-1) === "") lines.pop();
+        return send(res, 200, { lines: lines.map((l) => l.replace(/\r$/, "")) });
+      }
 
       if (url.pathname === "/api/state" && req.method === "PUT") {
         const state = ReviewState.parse(await body(req));

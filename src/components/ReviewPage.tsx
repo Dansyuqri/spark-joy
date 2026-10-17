@@ -29,7 +29,7 @@ const go = (at: number | "skim") => {
   window.scrollTo(0, 0);
 };
 
-export function ReviewPage({ plan, view, state, update, at, file }: Props) {
+export function ReviewPage({ data, plan, view, state, update, at, file }: Props) {
   useEffect(() => {
     if (file) document.getElementById(`file-${file}`)?.scrollIntoView({ block: "start" });
   }, [file, at]);
@@ -68,6 +68,7 @@ export function ReviewPage({ plan, view, state, update, at, file }: Props) {
   });
 
   const lineNotes = notesInHunks(hunks, state.lineNotes);
+  const chunkOf = new Map(view.chunks.flatMap((c) => c.chunk.hunks.map((id) => [id, c.index] as const)));
   const addNote = (n: Omit<LineNote, "id" | "at">) =>
     update((s) => ({
       ...s,
@@ -146,6 +147,8 @@ export function ReviewPage({ plan, view, state, update, at, file }: Props) {
         <DiffView
           key={`${view.strategy.id}-${index}`}
           hunks={hunks}
+          allHunks={data.hunks}
+          chunkOf={chunkOf}
           notes={lineNotes}
           onAdd={addNote}
           onEdit={editNote}
