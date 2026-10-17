@@ -14,9 +14,13 @@
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
 </p>
 
-AI-assisted pull requests are often thousands of lines long, too big to review properly in one go. spark-joy has Claude break a big PR or MR into small, ordered chunks, then opens a local app where you review them one batch at a time. You tick chunks off, leave notes, and finish with a summary of everything the PR changes.
+AI-written PRs are often thousands of lines long: too big to review properly. spark-joy has Claude split a PR into small, ordered chunks, then opens a local app where you review them one at a time, see how they connect on a map, and finish with a summary of what the PR does.
 
-It works from plain git, so it works the same for GitHub, GitLab or anything else. Nothing is posted anywhere; your notes export as markdown you can paste into the PR.
+**Example:** spark-joy's own history, one 7.8k-line diff, became **18 chunks of 141–369 lines**, every hunk placed exactly once. The 2.7k-line lockfile went straight to *skim*.
+
+<p align="center"><img src="assets/demo.gif" width="800" alt="Choosing a review order, reviewing a chunk with a line note, then zooming into a chunk on the map"></p>
+
+Works from plain git, so GitHub, GitLab or anything else. Nothing is posted anywhere; notes export as markdown for the PR.
 
 Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
 
@@ -41,10 +45,16 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 
 Requires Node 24 or newer and git. Published on npm as [`@dansyuqri/spark-joy`](https://www.npmjs.com/package/@dansyuqri/spark-joy).
 
+Install the CLI, then add the skill to Claude Code, either as a plugin:
+
 ```sh
 npm install -g @dansyuqri/spark-joy
-spark-joy install-skill            # or --project to install into ./.claude/skills
 ```
+```
+/plugin install spark-joy --marketplace Dansyuqri/spark-joy
+```
+
+or straight from the CLI: `spark-joy install-skill` (add `--project` to install into `./.claude/skills`).
 
 ## Use
 
@@ -77,7 +87,7 @@ In the app:
 
 `base` defaults to `origin/HEAD`, then `origin/main`, `origin/master` or `main`. Runs are stored in `.spark-joy/`, which ignores itself in git.
 
-The plan format is documented in [skill/SKILL.md](skill/SKILL.md), and the schema is in [shared/schema.ts](shared/schema.ts).
+The plan format is documented in [SKILL.md](plugin/skills/spark-joy/SKILL.md), and the schema is in [shared/schema.ts](shared/schema.ts).
 
 ## Develop
 

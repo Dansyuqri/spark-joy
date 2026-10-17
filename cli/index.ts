@@ -155,7 +155,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         ? join(await g.repoRoot(cwd), ".claude", "skills", "spark-joy")
         : join(homedir(), ".claude", "skills", "spark-joy");
       await mkdir(dir, { recursive: true });
-      await copyFile(join(PKG_ROOT, "skill", "SKILL.md"), join(dir, "SKILL.md"));
+      await copyFile(join(PKG_ROOT, "plugin", "skills", "spark-joy", "SKILL.md"), join(dir, "SKILL.md"));
       console.log(`installed skill to ${dir}; use /spark-joy in Claude Code`);
       return 0;
     }
