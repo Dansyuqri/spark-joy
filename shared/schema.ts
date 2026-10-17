@@ -99,7 +99,7 @@ export const AutoLink = z.object({
 });
 export type AutoLink = z.infer<typeof AutoLink>;
 
-// Written by Claude to name the relationships a reviewer must understand.
+// Written by the agent to name the relationships a reviewer must understand.
 export const PlanLink = z.object({
   from: z.string(),
   to: z.string(),

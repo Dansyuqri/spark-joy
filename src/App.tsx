@@ -62,7 +62,7 @@ export function App() {
 
   useEffect(() => {
     void refresh();
-    // Pick up a plan Claude rewrote while the app was open.
+    // Pick up a plan the agent rewrote while the app was open.
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     const onHash = () => setRoute(parseRoute(location.hash));
@@ -166,7 +166,7 @@ export function App() {
 
       {!data.hasPlan ? (
         <div className="empty">
-          No plan yet. Run <code>/spark-joy</code> in Claude Code.
+          No plan yet. Ask your agent to run the spark-joy skill.
         </div>
       ) : !data.plan || !view ? (
         <div className="empty">

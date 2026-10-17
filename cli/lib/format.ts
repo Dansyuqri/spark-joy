@@ -84,7 +84,7 @@ export function showFile(hunks: readonly Hunk[], file: string): string[] {
   return hunks.filter((h) => h.file === file || h.oldFile === file).map((h) => h.id);
 }
 
-// Links grouped by file pair, definer first, for Claude to pick which to label.
+// Links grouped by file pair, definer first, for the agent to pick which to label.
 export function formatLinks(hunks: readonly Hunk[], links: readonly AutoLink[]): string {
   const file = new Map(hunks.map((h) => [h.id, h.file]));
   const pairs = new Map<string, string[]>();

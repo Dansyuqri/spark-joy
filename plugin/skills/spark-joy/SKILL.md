@@ -9,7 +9,7 @@ You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two 
 - **Review** (default): someone else's PR, read in chunks. Steps 1–5.
 - **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode). The reader is a tired human. **Every word you write is load on them. Be terse.**
 
-Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
+Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review. If your sandbox blocks a command (a server that keeps running, or `split --apply` writing to `.git`), give the user the exact command to run instead.
 
 ## 1. Extract
 

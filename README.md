@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
 </p>
 
-AI-written PRs are often thousands of lines long: too big to review properly. spark-joy has Claude split a PR into small, ordered chunks, then opens a local app where you review them one at a time, see how they connect on a map, and finish with a summary of what the PR does.
+AI-written PRs are often thousands of lines long: too big to review properly. spark-joy has your coding agent split a PR into small, ordered chunks, then opens a local app where you review them one at a time, see how they connect on a map, and finish with a summary of what the PR does.
 
 **Example:** spark-joy's own history, one 7.8k-line diff, became **18 chunks of 141–369 lines**, every hunk placed exactly once. The 2.7k-line lockfile went straight to *skim*.
 
@@ -30,12 +30,12 @@ Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
 
 ```
 spark-joy extract   →  hunks.json    every hunk of the diff gets an id (h001, h012.1, …)
-Claude (the skill)  →  plan.json     hunks grouped into chunks, in two review orders, plus a feature list
+the agent (skill)   →  plan.json     hunks grouped into chunks, in two review orders, plus a feature list
 spark-joy validate  →  ok / errors   every non-mechanical hunk is in exactly one chunk, sizes are sane
 spark-joy serve     →  review app    choose an order, review chunk by chunk, export review.md
 ```
 
-- **Claude never copies code into the plan.** It refers to hunks by id, and `validate` checks that no change is missing or reviewed twice.
+- **The agent never copies code into the plan.** It refers to hunks by id, and `validate` checks that no change is missing or reviewed twice.
 - **Two review orders.** *Foundations first* goes types → logic → callers → tests. *By feature* follows one capability at a time, end to end. You pick one, and can switch later without losing progress.
 - **Mechanical changes are separated.** Lockfiles, generated files, binaries, renames and whitespace-only changes go into a collapsed *skim* section.
 - **Chunks stay small.** The target is 100–300 changed lines and validation warns above 400. Large hunks are split at function boundaries so they can go into different chunks.
@@ -47,26 +47,27 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 
 Requires Node 24 or newer and git. Published on npm as [`@dansyuqri/spark-joy`](https://www.npmjs.com/package/@dansyuqri/spark-joy).
 
-Install the CLI, then add the skill to Claude Code, either as a plugin:
+spark-joy is an [Agent Skill](https://agentskills.io) plus a CLI, so it works with Claude Code, Codex, Gemini CLI, Cursor, OpenCode and other agents that read `SKILL.md`.
 
 ```sh
 npm install -g @dansyuqri/spark-joy
+spark-joy install-skill
 ```
+
+`install-skill` copies the skill to `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex, Gemini CLI, Cursor, OpenCode and others).
+- `--agent claude` or `--agent agents` installs to one of them only.
+- `--project` installs into the repo.
+- `--print` prints the skill for agents without skill support: paste it into `AGENTS.md` or the agent's instructions.
+
+In Claude Code you can install it as a plugin instead:
+
 ```
 /plugin install spark-joy --marketplace Dansyuqri/spark-joy
 ```
 
-or straight from the CLI: `spark-joy install-skill` (add `--project` to install into `./.claude/skills`).
-
 ## Use
 
-In Claude Code, inside the repo with the branch checked out:
-
-```
-/spark-joy
-```
-
-Or say "help me review this PR in chunks". Claude extracts the diff, reads it, writes and validates the plan, and starts the app at http://127.0.0.1:4848.
+Inside the repo with the branch checked out, ask your agent to "review this PR in chunks" (in Claude Code, `/spark-joy` also works). The agent extracts the diff, reads it, writes and validates the plan, and starts the app at http://127.0.0.1:4848.
 
 In the app:
 
@@ -87,7 +88,7 @@ In the app:
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |
 | `spark-joy split [--check cmd] [--apply]` | Turn a split plan into stacked local branches |
-| `spark-joy install-skill [--project]` | Install the Claude Code skill |
+| `spark-joy install-skill [--agent a] [--project] [--print]` | Install the agent skill |
 
 `base` defaults to `origin/HEAD`, then `origin/main`, `origin/master` or `main`. Runs are stored in `.spark-joy/`, which ignores itself in git.
 
@@ -95,12 +96,12 @@ The plan format is documented in [SKILL.md](plugin/skills/spark-joy/SKILL.md), a
 
 ## Split your own changes
 
-Writing the big PR yourself? Ask Claude to "split my changes into smaller PRs". It turns your staged changes, uncommitted changes or whole branch into small PRs, each built on the one before.
+Writing the big PR yourself? Ask your agent to "split my changes into smaller PRs". It turns your staged changes, uncommitted changes or whole branch into small PRs, each built on the one before.
 
 <p align="center"><img src="assets/split.gif" width="800" alt="Extracting uncommitted changes, previewing five stacked PRs in the app, checking each PR's tests, then creating the branches"></p>
 
 1. **Extract** what you want to split: `--staged`, `--uncommitted`, or a base branch for the whole branch.
-2. **Plan.** Claude groups every change into ordered PRs: each must build on the ones before, and lockfiles go with the change that needs them. Preview the stack in the app; the Map shows how the PRs depend on each other.
+2. **Plan.** The agent groups every change into ordered PRs: each must build on the ones before, and lockfiles go with the change that needs them. Preview the stack in the app; the Map shows how the PRs depend on each other.
 3. **Check.** `split` builds the PRs and confirms the last one matches your changes exactly. `--check` runs your tests on each PR in a temporary worktree.
 4. **Apply.** `split --apply` creates the local branches and writes each PR's title and description to `prs.md`. Nothing is pushed.
 
@@ -129,5 +130,5 @@ Layout:
 - `cli/`: commands, diff parsing, splitting, classification, server, stacked-branch builder.
 - `shared/`: schemas, validation and derived state, used by both the CLI and the app.
 - `src/`: the React review app.
-- `plugin/`: the Claude Code plugin and skill.
+- `plugin/`: the skill, packaged as a Claude Code plugin.
 - `test/`: Vitest, with a fixture git repo.

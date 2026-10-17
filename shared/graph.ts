@@ -8,7 +8,7 @@ export interface Link {
   label?: string;
 }
 
-// Claude's labels attach to the CLI's links; labelled links the CLI missed are kept.
+// The agent's labels attach to the CLI's links; labelled links the CLI missed are kept.
 export function mergeLinks(auto: readonly AutoLink[], planned: readonly PlanLink[]): Link[] {
   const byKey = new Map<string, Link>(auto.map((l) => [`${l.from}>${l.to}`, { ...l }]));
   for (const p of planned) {
