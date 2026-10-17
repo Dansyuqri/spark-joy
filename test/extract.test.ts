@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../cli/index";
@@ -86,6 +86,23 @@ describe("plan, review and export", () => {
       console.log = orig;
     }
     expect(log.at(-1)).toMatch(/^plan ok/);
+  });
+
+  it("installs the skill for Claude Code and for .agents agents", async () => {
+    const orig = console.log;
+    console.log = () => {};
+    try {
+      expect(await main(["install-skill", "--project", "--agent", "agents"], root)).toBe(0);
+      expect(existsSync(join(root, ".agents/skills/spark-joy/SKILL.md"))).toBe(true);
+      expect(existsSync(join(root, ".claude/skills/spark-joy/SKILL.md"))).toBe(false);
+      expect(await main(["install-skill", "--project"], root)).toBe(0);
+      expect(readFileSync(join(root, ".claude/skills/spark-joy/SKILL.md"), "utf8")).toMatch(/^---\nname: spark-joy/);
+      await expect(main(["install-skill", "--project", "--agent", "vim"], root)).rejects.toThrow(/unknown agent vim/);
+    } finally {
+      console.log = orig;
+      rmSync(join(root, ".agents"), { recursive: true, force: true });
+      rmSync(join(root, ".claude"), { recursive: true, force: true });
+    }
   });
 
   it("exports progress, notes and features as markdown", async () => {

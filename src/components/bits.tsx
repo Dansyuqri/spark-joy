@@ -58,7 +58,7 @@ export function Issues({ issues }: { issues: Issue[] }) {
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-// Plan text is plain, but Claude tends to write `identifiers` in backticks.
+// Plan text is plain, but agents tend to write `identifiers` in backticks.
 export function Text({ children }: { children: string }) {
   return (
     <>

@@ -40,8 +40,11 @@ Commands:
       --apply           Create the branches (never pushes)
       --prefix <name>   Branch prefix (default <branch>-split)
       --force           Move branches that already exist
-  install-skill         Install the Claude Code skill into ~/.claude/skills/spark-joy
-      --project         Install into ./.claude/skills/spark-joy instead
+  install-skill         Install the agent skill for Claude Code (~/.claude/skills) and for
+                        Codex, Gemini CLI, Cursor, OpenCode and others (~/.agents/skills)
+      --agent <name>    Only one: claude or agents
+      --project         Install into the repo (./.claude/skills, ./.agents/skills)
+      --print           Print the skill instead, e.g. to paste into AGENTS.md
 
 Common options:
   --run <name>          Run to use (default: the current branch's run)
@@ -68,6 +71,8 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       prefix: { type: "string" },
       force: { type: "boolean" },
       check: { type: "string" },
+      agent: { type: "string" },
+      print: { type: "boolean" },
       "split-at": { type: "string" },
       file: { type: "string" },
       json: { type: "boolean" },
@@ -215,12 +220,24 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
     }
 
     case "install-skill": {
-      const dir = values.project
-        ? join(await g.repoRoot(cwd), ".claude", "skills", "spark-joy")
-        : join(homedir(), ".claude", "skills", "spark-joy");
-      await mkdir(dir, { recursive: true });
-      await copyFile(join(PKG_ROOT, "plugin", "skills", "spark-joy", "SKILL.md"), join(dir, "SKILL.md"));
-      console.log(`installed skill to ${dir}; use /spark-joy in Claude Code`);
+      const skill = join(PKG_ROOT, "plugin", "skills", "spark-joy", "SKILL.md");
+      if (values.print) {
+        process.stdout.write(await readFile(skill, "utf8"));
+        return 0;
+      }
+      // Claude Code reads .claude/skills; most other agents share .agents/skills.
+      const homes: Record<string, string> = { claude: ".claude", agents: ".agents" };
+      const agents = values.agent ? [values.agent] : Object.keys(homes);
+      const bad = agents.find((a) => !homes[a]);
+      if (bad) throw new Error(`unknown agent ${bad}; use claude or agents`);
+      const root = values.project ? await g.repoRoot(cwd) : homedir();
+      for (const a of agents) {
+        const dir = join(root, homes[a]!, "skills", "spark-joy");
+        await mkdir(dir, { recursive: true });
+        await copyFile(skill, join(dir, "SKILL.md"));
+        console.log(`installed skill to ${dir}`);
+      }
+      console.log('ask your agent to "review this PR in chunks" or "split my changes into PRs"');
       return 0;
     }
 

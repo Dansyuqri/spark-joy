@@ -34,7 +34,7 @@ function send(res: ServerResponse, status: number, data: unknown) {
 }
 
 // Everything the app needs, read fresh from disk on each request so a plan
-// rewritten by Claude shows up on the next reload.
+// rewritten by the agent shows up on the next reload.
 async function loadRun(paths: RunPaths) {
   const [meta, hunks, raw, state, links] = await Promise.all([
     readMeta(paths),
