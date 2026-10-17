@@ -74,19 +74,6 @@ In the app:
 - Click a line number to leave a note on that line.
 - **Summary → Export review.md** writes a markdown report with progress, notes (including `file:line`) and the feature list.
 
-### Split your own changes
-
-Ask Claude to "split my changes into smaller PRs". It picks the source, plans the stack and shows it in the app:
-
-```sh
-spark-joy extract --staged         # or --uncommitted, or a base for the whole branch
-spark-joy split                    # dry run: builds the PRs, checks they add up to your changes
-spark-joy split --check "npm ci && npm test"   # optional: run on each PR in a temporary worktree
-spark-joy split --apply            # creates <branch>-split/1-…, 2-…; never pushes
-```
-
-Each PR is built on the one before, from a temporary git index: your working tree, index and branch stay untouched. If the last PR doesn't match your changes exactly, nothing is created. PR titles and descriptions are written to `prs.md`.
-
 ### Commands
 
 | Command | What it does |
@@ -105,6 +92,26 @@ Each PR is built on the one before, from a temporary git index: your working tre
 `base` defaults to `origin/HEAD`, then `origin/main`, `origin/master` or `main`. Runs are stored in `.spark-joy/`, which ignores itself in git.
 
 The plan format is documented in [SKILL.md](plugin/skills/spark-joy/SKILL.md), and the schema is in [shared/schema.ts](shared/schema.ts).
+
+## Split your own changes
+
+Writing the big PR yourself? Ask Claude to "split my changes into smaller PRs". It turns your staged changes, uncommitted changes or whole branch into small PRs, each built on the one before.
+
+<p align="center"><img src="assets/split.gif" width="800" alt="Extracting uncommitted changes, previewing five stacked PRs in the app, checking each PR's tests, then creating the branches"></p>
+
+1. **Extract** what you want to split: `--staged`, `--uncommitted`, or a base branch for the whole branch.
+2. **Plan.** Claude groups every change into ordered PRs: each must build on the ones before, and lockfiles go with the change that needs them. Preview the stack in the app; the Map shows how the PRs depend on each other.
+3. **Check.** `split` builds the PRs and confirms the last one matches your changes exactly. `--check` runs your tests on each PR in a temporary worktree.
+4. **Apply.** `split --apply` creates the local branches and writes each PR's title and description to `prs.md`. Nothing is pushed.
+
+```sh
+spark-joy extract --uncommitted                 # or --staged, or a base for the whole branch
+spark-joy split                                 # dry run
+spark-joy split --check "npm ci && npm test"    # optional
+spark-joy split --apply                         # creates <branch>-split/1-…, 2-…
+```
+
+Your working tree, staged files and current branch are never touched: the PRs are built from a temporary git index. If anything doesn't add up, no branches are created.
 
 ## Develop
 

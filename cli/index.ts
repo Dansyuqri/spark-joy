@@ -1,6 +1,6 @@
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
@@ -97,7 +97,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       if (flags.length > 1) throw new Error(`pick one of ${flags.map((f) => `--${f}`).join(", ")}`);
       const r = await extract({ cwd, base: rest[0], source: flags[0], run: values.run, splitAt });
       console.log(describeMeta(r.meta));
-      console.log(`wrote ${r.paths.dir}`);
+      console.log(`wrote ${relative(cwd, r.paths.dir)}`);
       if (r.hunks.length === 0) console.log("the diff is empty; nothing to review");
       if (r.untracked.length)
         console.log(`note: ${r.untracked.length} untracked file(s) are not included; \`git add -N <file>\` to include them`);
@@ -162,7 +162,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       if (values.stdout) process.stdout.write(md);
       else {
         await writeFile(p.review, md);
-        console.log(`wrote ${p.review}`);
+        console.log(`wrote ${relative(cwd, p.review)}`);
       }
       return 0;
     }
@@ -204,13 +204,13 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
 
       await writeFile(p.prs, prsMarkdown(meta, stack));
       if (!values.apply) {
-        console.log(`wrote ${p.prs}\nnothing created; add --apply to create the branches`);
+        console.log(`wrote ${relative(cwd, p.prs)}\nnothing created; add --apply to create the branches`);
         return 0;
       }
       await createBranches(meta.repoRoot, stack, !!values.force);
       console.log(`created ${stack.prs.length} branches; your working tree is unchanged. To publish:`);
       for (const pr of stack.prs) console.log(`  git push -u origin ${pr.branch}`);
-      console.log(`PR titles and descriptions: ${p.prs}`);
+      console.log(`PR titles and descriptions: ${relative(cwd, p.prs)}`);
       return 0;
     }
 
