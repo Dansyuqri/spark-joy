@@ -62,8 +62,7 @@ export const Risk = z.enum(["low", "med", "high"]);
 export const Chunk = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
-  // Optional: leave it out when the title says enough.
-  intent: z.string().optional(),
+  intent: z.string().min(1),
   kind: ChunkKind.default("core"),
   hunks: z.array(z.string()),
   dependsOn: z.array(z.string()).default([]),

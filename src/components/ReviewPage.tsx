@@ -121,7 +121,7 @@ export function ReviewPage({ plan, view, state, update, at }: Props) {
             {plural(files, "file")}
             {status === "partial" && <span className="warn"> · changed since review</span>}
           </div>
-          {current?.chunk.intent && (
+          {current && (
             <p className="intent">
               <Text>{current.chunk.intent}</Text>
             </p>

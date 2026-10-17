@@ -60,7 +60,8 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 - Never contrast with what it doesn't do: ~~"Reads hunks by count, not prefix"~~ → "Reads hunks by line count".
 - No openers or filler: ~~"This chunk introduces various…"~~.
 - Cut every word that doesn't change the meaning.
-- Omit `intent` when the title says enough. Omit `reviewFocus` when nothing is risky.
+- `title` names the area. `intent` says what the change achieves. Both are required, even when it feels obvious.
+- `reviewFocus` is a question naming what could break, e.g. ~~"Quoted paths"~~ → "Quoted paths with spaces parsed right?". Omit it when nothing is risky.
 
 `validate` rejects contrasts (", not", "rather than", "instead of"), openers and filler words.
 
