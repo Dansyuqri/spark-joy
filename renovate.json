@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "schedule": ["before 9am on monday"],
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": { "enabled": true, "schedule": ["before 9am on the first day of the month"] },
+  "packageRules": [
+    {
+      "description": "Build and test tools: one weekly PR, merged after green CI",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies (non-major)",
+      "automerge": true
+    },
+    {
+      "description": "GitHub Actions: pinned to digests, merged after green CI",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "description": "Types follow the Node version in engines (>=24)",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
+    }
+  ]
+}
