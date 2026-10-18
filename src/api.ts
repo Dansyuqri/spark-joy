@@ -1,5 +1,5 @@
 import type { Issue } from "../shared/validate";
-import type { AutoLink, Hunk, Meta, Plan, ReviewState } from "../shared/schema";
+import type { AutoLink, Hunk, Meta, Plan, ReviewState, Rubric } from "../shared/schema";
 
 export interface RunData {
   meta: Meta;
@@ -9,6 +9,7 @@ export interface RunData {
   hasPlan: boolean;
   links: AutoLink[];
   state: ReviewState;
+  rubric?: Rubric;
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {

@@ -71,6 +71,8 @@ export const Chunk = z.object({
   dependsOn: z.array(z.string()).default([]),
   reviewFocus: z.array(z.string()).default([]),
   risk: Risk.default("low"),
+  // Why this chunk is med or high risk, against the agreed rubric.
+  riskReason: z.string().min(1).optional(),
   // Split mode: the branch this chunk becomes.
   branch: z.string().min(1).optional(),
 });
@@ -142,3 +144,30 @@ export const ReviewState = z.object({
 export type ReviewState = z.infer<typeof ReviewState>;
 
 export const emptyState = (): ReviewState => ReviewState.parse({});
+
+// What counts as high and medium risk in a repo, agreed with the user and kept
+// in .spark-joy.md at the repo root.
+export interface Rubric {
+  high: string[];
+  med: string[];
+}
+
+export const RUBRIC_FILE = ".spark-joy.md";
+
+// Reads "- high: a, b" and "- med: c" lines under a "## Risk" heading.
+export function parseRubric(text: string): Rubric | undefined {
+  const rubric: Rubric = { high: [], med: [] };
+  let inRisk = false;
+  for (const line of text.split(/\r?\n/)) {
+    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    if (heading) {
+      inRisk = /^risk$/i.test(heading[1]!.trim());
+      continue;
+    }
+    const m = inRisk && /^\s*[-*]\s*(high|med|medium)\s*:\s*(.+)$/i.exec(line);
+    if (!m) continue;
+    const items = m[2]!.split(",").map((s) => s.trim()).filter(Boolean);
+    rubric[m[1]!.toLowerCase() === "high" ? "high" : "med"].push(...items);
+  }
+  return rubric.high.length || rubric.med.length ? rubric : undefined;
+}

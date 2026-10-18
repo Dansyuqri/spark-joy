@@ -18,6 +18,7 @@ export const BUDGET = {
   featureTitle: 4,
   featureDescription: 8,
   linkLabel: 3,
+  riskReason: 8,
 } as const;
 
 // Phrases that add words without adding meaning: contrasts with what the code
@@ -119,6 +120,10 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
       if (c.hunks.length === 0) error(cw, "chunk has no hunks");
       tooLong(cw, "title", c.title, BUDGET.chunkTitle);
       tooLong(cw, "intent", c.intent, BUDGET.intent);
+      if (c.risk === "low") {
+        if (c.riskReason) warn(cw, "riskReason on a low-risk chunk; drop it");
+      } else if (!c.riskReason) error(cw, `${c.risk} risk needs a riskReason: which rubric item, and where`);
+      else tooLong(cw, "riskReason", c.riskReason, BUDGET.riskReason);
       if (c.reviewFocus.length > BUDGET.focusItems)
         error(cw, `${c.reviewFocus.length} reviewFocus items; max ${BUDGET.focusItems}`);
       c.reviewFocus.forEach((q, n) => tooLong(cw, `reviewFocus ${n + 1}`, q, BUDGET.focusWords));

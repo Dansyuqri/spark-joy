@@ -5,6 +5,7 @@ import { ReviewState } from "../../shared/schema";
 import { validatePlan } from "../../shared/validate";
 import { exportMarkdown } from "./export";
 import { fileText } from "./git";
+import { readRubric } from "./rubric";
 import { readHunks, readLinks, readMeta, readPlanRaw, readState, writeJson, type RunPaths } from "./runs";
 
 const TYPES: Record<string, string> = {
@@ -45,6 +46,7 @@ async function loadRun(paths: RunPaths) {
     readState(paths),
     readLinks(paths),
   ]);
+  const rubric = await readRubric(meta.repoRoot);
   const validation = raw === undefined ? undefined : validatePlan(raw, hunks);
   return {
     meta,
@@ -54,6 +56,7 @@ async function loadRun(paths: RunPaths) {
     hasPlan: raw !== undefined,
     links,
     state,
+    rubric,
   };
 }
 

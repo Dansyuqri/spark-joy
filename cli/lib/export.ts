@@ -43,7 +43,8 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
   for (const c of view.chunks) {
     const status = hunkStatus(c.hunks, reviewed);
     const changed = status === "partial" ? " · changed since review" : "";
-    out.push(`- ${MARK[status]} ${c.index + 1}. ${c.chunk.title} (${c.size})${changed}`);
+    const risk = c.chunk.risk !== "low" ? ` · ${c.chunk.risk}: ${c.chunk.riskReason ?? "unexplained"}` : "";
+    out.push(`- ${MARK[status]} ${c.index + 1}. ${c.chunk.title} (${c.size})${risk}${changed}`);
     const note = state.chunkNotes[chunkNoteKey(view.strategy.id, c.chunk.id)]?.trim();
     if (note) out.push(...note.split("\n").map((l) => `  > ${l}`));
     for (const n of notesInHunks(c.hunks, state.lineNotes))

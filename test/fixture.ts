@@ -67,7 +67,7 @@ export function planFor(hs: Hunk[]) {
         id: "layers",
         label: "Foundations first",
         chunks: [
-          { id: "core", title: "Core", intent: "First half.", hunks: code.slice(0, half), risk: "high" },
+          { id: "core", title: "Core", intent: "First half.", hunks: code.slice(0, half), risk: "high", riskReason: "Changes exported return values (public API)" },
           { id: "rest", title: "Rest", intent: "Second half.", hunks: code.slice(half), dependsOn: ["core"] },
           { id: "tests", title: "Tests", intent: "Tests.", kind: "test", hunks: tests },
         ],

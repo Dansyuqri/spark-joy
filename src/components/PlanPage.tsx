@@ -24,6 +24,21 @@ export function PlanPage({ data, plan, state, update }: Props) {
         </p>
       )}
       <Issues issues={data.issues} />
+      {data.rubric && (
+        <details className="rubric">
+          <summary>Risk rubric</summary>
+          {data.rubric.high.length > 0 && (
+            <p>
+              <span className="risk risk-high">High</span> {data.rubric.high.join(", ")}
+            </p>
+          )}
+          {data.rubric.med.length > 0 && (
+            <p>
+              <span className="risk risk-med">Med</span> {data.rubric.med.join(", ")}
+            </p>
+          )}
+        </details>
+      )}
       <div className="strategies">
         {plan.strategies.map((s) => {
           const view = strategyView(plan, data.hunks, s.id)!;
@@ -44,7 +59,7 @@ export function PlanPage({ data, plan, state, update }: Props) {
                       {c.chunk.title}
                       {split && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
                     </span>
-                    <Risk risk={c.chunk.risk} />
+                    <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
                     <Kind kind={c.chunk.kind} />
                     <span className="size">{c.size}</span>
                   </li>

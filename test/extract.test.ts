@@ -118,7 +118,7 @@ describe("plan, review and export", () => {
     const md = exportMarkdown(await readMeta(p), hunks, plan!, state);
     expect(md).toContain("# Review: Math tweaks");
     expect(md).toMatch(/^1\/3 chunks · \d+% lines/m);
-    expect(md).toMatch(/^- \[x\] 1\. Core \(\d+\)$/m);
+    expect(md).toMatch(/^- \[x\] 1\. Core \(\d+\) · high: Changes exported return values \(public API\)$/m);
     expect(md).toMatch(/^- \[ \] 2\. Rest/m);
     expect(md).toContain("  > Why 33?");
     expect(md).toContain(`  - \`${first.file}:${first.newStart}\` Check this`);

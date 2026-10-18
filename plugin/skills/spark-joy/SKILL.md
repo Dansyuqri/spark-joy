@@ -28,7 +28,25 @@ spark-joy show h001..h015 | show h007 h012 | show --file src/api.ts
 
 Read in batches, never the whole diff at once. Open surrounding source files when you need context.
 
-## 3. Write `.spark-joy/<run>/plan.json`
+## 3. Agree risk with the user
+
+Risk is subjective, so agree what counts as risky before labelling anything.
+
+```
+spark-joy rubric
+```
+
+- If it prints a rubric that covers what this PR touches, use it.
+- Otherwise propose one: at most 2 lines per level, naming areas this repo and PR actually touch. Show it to the user and **wait for them to confirm or edit it**; never assume. Then write `.spark-joy.md` at the repo root and tell the user to commit it, so their team shares it:
+
+```md
+# spark-joy
+## Risk
+- high: auth and permissions, payments, DB migrations
+- med: shared utilities, checkout flow
+```
+
+## 4. Write `.spark-joy/<run>/plan.json`
 
 ```json
 {
@@ -37,7 +55,7 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
   "strategies": [
     { "id": "layers", "chunks": [
       { "id": "schema", "title": "Invitations table", "intent": "Pending invites; everything reads this.",
-        "hunks": ["h004", "h005"], "risk": "med",
+        "hunks": ["h004", "h005"], "risk": "med", "riskReason": "New table on hot query path",
         "reviewFocus": ["Unique (team_id, email) blocks re-invites?"] }
     ]},
     { "id": "features", "chunks": [] }
@@ -57,6 +75,7 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 | reviewFocus | 2 items × 8 |
 | feature title / description | 4 / 8 |
 | link label | 3 |
+| riskReason | 8 |
 
 **Style:** every word costs the reviewer. Write like a commit subject; fragments are fine.
 - Say what it does or what to watch. Never restate the code.
@@ -77,10 +96,7 @@ Read in batches, never the whole diff at once. Open surrounding source files whe
 - A hunk goes with the code it belongs to; pieces of a split hunk may go to different chunks.
 - Tests go with the code they cover, unless they're large.
 - `dependsOn` may only name earlier chunks.
-- `risk`:
-  - `high`: auth, security, money, migrations/deletion, concurrency, public API;
-  - `med`: behaviour change in shared code;
-  - `low`: everything else, and the default.
+- `risk`: `high` or `med` only when a rubric item applies; `low` (the default) otherwise. Every `high` or `med` chunk needs a `riskReason` naming what it touches and the rubric item, e.g. "Changes session token refresh (auth)".
 - `kind`: `core` (the default), `test` or `mechanical`.
 
 **skim** is only for mechanical churn: moves, formatting, import order, version bumps. **Never logic.**
@@ -103,7 +119,7 @@ Add `"links"` to the plan only for the arrows a reviewer must understand, labell
 
 `from` uses `to`. Unlabelled links still show. Add a link the CLI missed only when it's real.
 
-## 4. Validate
+## 5. Validate
 
 ```
 spark-joy validate
@@ -111,7 +127,7 @@ spark-joy validate
 
 Fix every error and re-run until it says `plan ok`. Fix the warnings too.
 
-## 5. Serve
+## 6. Serve
 
 Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more.
 
@@ -125,7 +141,7 @@ spark-joy extract --uncommitted   # staged + unstaged
 spark-joy extract [base]          # the whole branch
 ```
 
-Read the hunks as in step 2, then write the plan with `"mode": "split"` and one strategy, `split`:
+Read the hunks as in step 2 and agree risk as in step 3, then write the plan with `"mode": "split"` and one strategy, `split`:
 
 ```json
 {

@@ -4,12 +4,14 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
+import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
 import { extract } from "./lib/extract";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
 import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
+import { formatRubric, readRubric } from "./lib/rubric";
 import { serve } from "./lib/server";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
 
@@ -29,6 +31,7 @@ Commands:
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
       --file <path>     Print every hunk of a file
   links                 Cross-file links: which hunk uses a name another hunk defines
+  rubric                Print the agreed risk rubric (.spark-joy.md at the repo root)
   validate              Check plan.json against the hunks
       --json            Machine-readable output
   serve                 Open the review app
@@ -107,6 +110,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       if (r.untracked.length)
         console.log(`note: ${r.untracked.length} untracked file(s) are not included; \`git add -N <file>\` to include them`);
       if (await readPlanRaw(r.paths)) console.log("note: plan.json already exists and may be stale; run `spark-joy validate`");
+      console.log((await readRubric(r.meta.repoRoot)) ? `risk rubric: ${RUBRIC_FILE}` : "no risk rubric yet");
       return 0;
     }
 
@@ -131,11 +135,20 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       return 0;
     }
 
+    case "rubric": {
+      const rubric = await readRubric(await g.repoRoot(cwd));
+      console.log(rubric ? formatRubric(rubric) : `no risk rubric yet; agree one with the user and write ${RUBRIC_FILE}`);
+      return 0;
+    }
+
     case "validate": {
       const p = await run(cwd, values.run);
       const raw = await readPlanRaw(p);
       if (raw === undefined) throw new Error(`no plan yet; write ${p.plan}`);
       const result = validatePlan(raw, await readHunks(p));
+      const risky = result.plan?.strategies.some((s) => s.chunks.some((c) => c.risk !== "low"));
+      if (risky && !(await readRubric(await g.repoRoot(cwd))))
+        result.issues.push({ level: "warning", where: "risk", message: `no risk rubric; agree one with the user and write ${RUBRIC_FILE}` });
       if (values.json) {
         console.log(JSON.stringify({ ok: result.ok, issues: result.issues }, null, 2));
       } else {

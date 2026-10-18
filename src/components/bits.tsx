@@ -26,10 +26,15 @@ export function StatusIcon({ status }: { status: ChunkStatus }) {
 }
 
 // Only medium and high risk are shown; low is the default and needs no ink.
-export function Risk({ risk }: { risk: "low" | "med" | "high" }) {
+// `compact` drops the word "risk" for lists and puts the reason in a tooltip.
+export function Risk({ risk, reason, compact }: { risk: "low" | "med" | "high"; reason?: string; compact?: boolean }) {
   if (risk === "low") return null;
-  const label = risk === "med" ? "Medium risk" : "High risk";
-  return <span className={`risk risk-${risk}`} title={label} aria-label={label} role="img" />;
+  const word = risk === "med" ? "Med" : "High";
+  return (
+    <span className={`risk risk-${risk}`} title={reason ? `${word} risk: ${reason}` : `${word} risk`}>
+      {compact ? word : `${word} risk`}
+    </span>
+  );
 }
 
 // "core" is the default kind, so only tests and mechanical chunks get a tag.

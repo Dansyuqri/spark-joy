@@ -270,6 +270,7 @@ export function prsMarkdown(meta: Meta, stack: Stack): string {
     out.push(`## ${pr.n}. ${c.title}`, "");
     out.push(`\`${pr.branch}\` → \`${i === 0 ? target : stack.prs[i - 1]!.branch}\` · ${pr.lines} lines`, "");
     out.push(c.intent, "");
+    if (c.risk !== "low") out.push(`**${c.risk === "high" ? "High" : "Medium"} risk:** ${c.riskReason ?? "unexplained"}`, "");
     for (const q of c.reviewFocus) out.push(`- ${q}`);
     if (c.reviewFocus.length) out.push("");
     // The PR below is implied by the stack; name only the ones further down.

@@ -220,11 +220,15 @@ textarea {
 }
 .risk {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
   margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
   vertical-align: middle;
+  color: #fff;
+  white-space: nowrap;
 }
 .risk-high {
   background: var(--del-ink);
@@ -718,4 +722,26 @@ tr.line.expanded td.no {
   margin-left: 8px;
   font-size: 12px;
   padding: 1px 8px;
+}
+
+/* Risk */
+.risk-reason {
+  margin: 4px 0 0;
+  font-size: 13px;
+  padding-left: 8px;
+  border-left: 3px solid var(--partial);
+}
+.risk-reason-high {
+  border-left-color: var(--del-ink);
+}
+.rubric {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.rubric p {
+  margin: 4px 0;
+}
+.rubric .risk {
+  margin: 0 6px 0 0;
 }

@@ -209,3 +209,28 @@ describe("split mode", () => {
       expect(errors(validatePlan(split([named(bad)]), hunks))).toEqual([`invalid branch name "${bad}"`]);
   });
 });
+
+describe("risk reasons", () => {
+  const risky = (over: Record<string, unknown>) =>
+    plan({
+      strategies: [
+        { id: "layers", chunks: [{ ...chunk("a", ["h001"]), ...over }, chunk("b", ["h002", "h003"], ["a"])] },
+        { id: "features", chunks: [chunk("x", ["h001", "h002", "h003"])] },
+      ],
+    });
+
+  it("requires a short, plain reason for med and high risk", () => {
+    expect(errors(validatePlan(risky({ risk: "high" }), hunks))).toEqual([
+      "high risk needs a riskReason: which rubric item, and where",
+    ]);
+    expect(errors(validatePlan(risky({ risk: "med", riskReason: "Changes session token refresh (auth)" }), hunks))).toEqual([]);
+    expect(errors(validatePlan(risky({ risk: "med", riskReason: "one two three four five six seven eight nine" }), hunks))).toEqual([
+      "riskReason is 9 words; max 8",
+    ]);
+    expect(errors(validatePlan(risky({ risk: "high", riskReason: "This change touches auth" }), hunks))).toHaveLength(1);
+  });
+
+  it("warns about a reason on a low-risk chunk", () => {
+    expect(warnings(validatePlan(risky({ riskReason: "Touches auth" }), hunks))).toContain("riskReason on a low-risk chunk; drop it");
+  });
+});
