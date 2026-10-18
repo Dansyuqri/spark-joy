@@ -1,4 +1,4 @@
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
@@ -98,6 +98,20 @@ describe("review app", () => {
     expect(state.lineNotes).toHaveLength(1);
     expect(existsSync(runPaths(root, "feature").review)).toBe(true);
     expect(errors).toEqual([]);
+  });
+
+  it("labels risky chunks with their reason and shows the agreed rubric", async () => {
+    writeFileSync(join(root, ".spark-joy.md"), "# spark-joy\n## Risk\n- high: public API\n- med: shared utils\n");
+    await page.goto(`${server.url}/#/plan`);
+    await page.reload();
+    await page.locator(".rubric summary").click();
+    await page.locator(".rubric", { hasText: "public API" }).waitFor();
+    await page.locator(".chunk-list .risk-high", { hasText: "High" }).first().waitFor();
+
+    await page.goto(`${server.url}/#/review/1`);
+    await page.locator(".chunk-head .risk-high", { hasText: "High risk" }).waitFor();
+    await page.locator(".risk-reason", { hasText: "Changes exported return values (public API)" }).waitFor();
+    await page.screenshot({ path: process.env.SHOT ?? "/dev/null" }).catch(() => {});
   });
 
   it("expands context around hunks and shows whole files", async () => {

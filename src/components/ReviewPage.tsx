@@ -96,6 +96,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
                 <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
                 <span className="n">{i + 1}</span>
                 <span className="title">{c.chunk.title}</span>
+                <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
                 <span className="size">{c.size}</span>
               </a>
             </li>
@@ -120,9 +121,14 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
         <header className="chunk-head">
           <h1>
             <StatusIcon status={status} /> {current ? current.chunk.title : "Skim"}
-            {current && <Risk risk={current.chunk.risk} />}
+            {current && <Risk risk={current.chunk.risk} reason={current.chunk.riskReason} />}
             {current && <Kind kind={current.chunk.kind} />}
           </h1>
+          {current?.chunk.riskReason && current.chunk.risk !== "low" && (
+            <p className={`risk-reason risk-reason-${current.chunk.risk}`}>
+              <Text>{current.chunk.riskReason}</Text>
+            </p>
+          )}
           <div className="muted small">
             {current ? `${index === "skim" ? "" : (index as number) + 1}/${count} · ${current.size} lines · ` : ""}
             {plural(files, "file")}
