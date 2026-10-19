@@ -3,11 +3,11 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../cli/index";
 import { extract } from "../cli/lib/extract";
-import { reviewPayload } from "../cli/lib/comments";
+import { gitlabDraftNotes, reviewPayload } from "../cli/lib/comments";
 import { exportMarkdown } from "../cli/lib/export";
 import { expandIds, outline } from "../cli/lib/format";
 import { readHunks, readLinks, readMeta, readState, runPaths, writeJson } from "../cli/lib/runs";
-import { setReviewed, strategyView } from "../shared/derive";
+import { numberLines, setReviewed, strategyView } from "../shared/derive";
 import { emptyState, type Hunk, type ReviewState } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
 import { makeRepo, planFor, sh, write } from "./fixture";
@@ -153,6 +153,17 @@ describe("plan, review and export", () => {
     expect(review).not.toHaveProperty("event");
 
     expect(() => reviewPayload({ ...meta, source: "staged" }, hunks, plan!, state)).toThrow(/not a PR/);
+
+    const added = numberLines(first).find((l) => l.kind === "add")!.newNo!;
+    state.lineNotes.push({ id: "n5", file: first.file, side: "new", line: added, text: "New value", at: "" });
+    const shas = { position_type: "text", base_sha: meta.mergeBase, start_sha: meta.baseSha, head_sha: meta.headSha };
+    const drafts = gitlabDraftNotes(meta, hunks, plan!, state);
+    expect(drafts).toEqual([
+      { note: review.body },
+      { note: "Check this", position: { ...shas, old_path: first.file, new_path: first.file, old_line: first.oldStart, new_line: first.newStart } },
+      { note: "Still used?", position: { ...shas, old_path: del.file, new_path: del.file, old_line: del.oldStart } },
+      { note: "New value", position: { ...shas, old_path: first.file, new_path: first.file, new_line: added } },
+    ]);
   });
 
   it("keeps review progress for unchanged hunks after new commits", async () => {

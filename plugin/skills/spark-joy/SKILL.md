@@ -1,6 +1,6 @@
 ---
 name: spark-joy
-description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR as a pending GitHub review. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR or MR as a pending GitHub review or GitLab draft notes. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
 ---
 
 # spark-joy
@@ -8,7 +8,7 @@ description: Break a large PR/MR into small, ordered chunks and open a local app
 You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two modes, plus one follow-up:
 - **Review** (default): someone else's PR, read in chunks. Steps 1–5.
 - **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode).
-- **Post notes**: the reviewer's own notes go to the PR as a pending review. [Step 7](#7-post-the-reviewers-notes-only-when-asked).
+- **Post notes**: the reviewer's own notes go to the PR or MR as a pending review. [Step 7](#7-post-the-reviewers-notes-only-when-asked).
 
 The reader is a tired human. **Every word you write is load on them. Be terse.**
 
@@ -136,23 +136,35 @@ Run `spark-joy serve` in the background. Reply with the URL and one line: what t
 
 ## 7. Post the reviewer's notes (only when asked)
 
-When the user asks to turn their review into PR comments, post **their notes, word for word**. Never add your own findings, never reword, summarise or "improve" a note, and never comment on anything they didn't. If they want more said, they write it in the app.
+When the user asks to turn their review into PR or MR comments, post **their notes, word for word**. Never add your own findings, never reword, summarise or "improve" a note, and never comment on anything they didn't. If they want more said, they write it in the app.
 
 ```
-spark-joy comments
+spark-joy comments            # GitHub
+spark-joy comments --gitlab   # GitLab
 ```
 
-It writes `.spark-joy/<run>/comments.json` from the notes saved in the app: line notes on diff lines become inline comments; chunk notes and notes on lines outside the diff go in the review body. If it says there are no notes, tell the user and stop.
+It writes `.spark-joy/<run>/comments.json` from the notes saved in the app: line notes on diff lines become inline comments on that line; chunk notes and notes on lines outside the diff go in the review body. If it says there are no notes, tell the user and stop. Post the file unchanged; never edit it.
 
-1. Check the run is current: the commit it prints must be the PR's head (`gh pr view <n> --json headRefOid`). If not, ask the user to re-extract and check their notes still sit on the right lines.
-2. Post it unchanged as a **pending** review, which only the user can see until they submit it:
+**GitHub**
+1. The commit it prints must be the PR's head (`gh pr view <n> --json headRefOid`). If not, ask the user to re-extract and check their notes still sit on the right lines.
+2. Post it as a **pending** review, which only the user sees until they submit it:
    ```
    gh api --method POST repos/<owner>/<repo>/pulls/<n>/reviews --input .spark-joy/<run>/comments.json
    ```
-   Without `gh`, use your GitHub tools: create a pending review on the printed commit, then add each comment and the body exactly as they appear in the file. Never submit or approve the review.
-3. Reply with the PR link, the comment count, and that the review is pending until they submit it on GitHub.
+   Without `gh`, use your GitHub tools: create a pending review on the printed commit, then add each comment and the body exactly as they appear in the file.
 
-GitHub only. On other hosts, offer `spark-joy export` for the user to paste.
+**GitLab**
+1. Each note's `position` SHAs must match the MR's `diff_refs` (`glab mr view <iid> -F json`): `head_sha`, `base_sha` and `start_sha`. If not, ask the user to fetch, re-extract against the MR's target branch and check their notes.
+2. Post each entry as a **draft note**, which only the user sees until they submit their review:
+   ```
+   jq -c '.[]' .spark-joy/<run>/comments.json | while IFS= read -r n; do
+     printf '%s' "$n" | glab api --method POST "projects/:fullpath/merge_requests/<iid>/draft_notes" --input -
+   done
+   ```
+
+Never submit, publish or approve the review. Reply with the PR/MR link, the comment count, and that it stays pending until they submit it.
+
+On other hosts, offer `spark-joy export` for the user to paste.
 
 ## Split mode
 

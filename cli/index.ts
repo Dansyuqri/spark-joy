@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
 import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
-import { reviewPayload } from "./lib/comments";
+import { gitlabDraftNotes, reviewPayload } from "./lib/comments";
 import { extract } from "./lib/extract";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
@@ -40,6 +40,7 @@ Commands:
   export                Write review.md with progress, notes and the feature summary
       --stdout          Print instead of writing the file
   comments              Write comments.json: your notes as a pending GitHub review, word for word
+      --gitlab          As GitLab draft notes instead, one request body per note
       --stdout          Print instead of writing the file
   split                 Dry run of a split plan: build the stacked PRs and check they add up
       --check <cmd>     Run cmd on each PR in a temporary worktree, e.g. "npm ci && npm test"
@@ -84,6 +85,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       json: { type: "boolean" },
       port: { type: "string" },
       stdout: { type: "boolean" },
+      gitlab: { type: "boolean" },
       project: { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
@@ -195,15 +197,18 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const result = raw === undefined ? undefined : validatePlan(raw, hunks);
       if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
       const meta = await readMeta(p);
-      const review = reviewPayload(meta, hunks, result.plan, await readState(p));
-      if (!review.comments.length && !review.body) throw new Error("no notes yet; leave notes in the review app first");
+      const state = await readState(p);
+      const review = values.gitlab ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
+      const inline = Array.isArray(review) ? review.filter((n) => n.position).length : review.comments.length;
+      const general = Array.isArray(review) ? review.length > inline : !!review.body;
+      if (!inline && !general) throw new Error("no notes yet; leave notes in the review app first");
       const json = JSON.stringify(review, null, 2) + "\n";
       if (values.stdout) {
         process.stdout.write(json);
         return 0;
       }
       await writeFile(p.comments, json);
-      console.log(`${review.comments.length} inline comment(s)${review.body ? ", plus notes in the review body" : ""} on ${meta.headSha.slice(0, 7)}`);
+      console.log(`${inline} inline comment(s)${general ? ", plus notes in the review body" : ""} on ${meta.headSha.slice(0, 7)}`);
       console.log(`wrote ${relative(cwd, p.comments)}`);
       return 0;
     }
