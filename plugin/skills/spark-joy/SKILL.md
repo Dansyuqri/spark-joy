@@ -1,13 +1,16 @@
 ---
 name: spark-joy
-description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR as a pending GitHub review. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
 ---
 
 # spark-joy
 
-You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two modes:
+You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two modes, plus one follow-up:
 - **Review** (default): someone else's PR, read in chunks. Steps 1–5.
-- **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode). The reader is a tired human. **Every word you write is load on them. Be terse.**
+- **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode).
+- **Post notes**: the reviewer's own notes go to the PR as a pending review. [Step 7](#7-post-the-reviewers-notes-only-when-asked).
+
+The reader is a tired human. **Every word you write is load on them. Be terse.**
 
 Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review. If your sandbox blocks a command (a server that keeps running, or `split --apply` writing to `.git`), give the user the exact command to run instead.
 
@@ -130,6 +133,26 @@ Fix every error and re-run until it says `plan ok`. Fix the warnings too.
 ## 6. Serve
 
 Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more.
+
+## 7. Post the reviewer's notes (only when asked)
+
+When the user asks to turn their review into PR comments, post **their notes, word for word**. Never add your own findings, never reword, summarise or "improve" a note, and never comment on anything they didn't. If they want more said, they write it in the app.
+
+```
+spark-joy comments
+```
+
+It writes `.spark-joy/<run>/comments.json` from the notes saved in the app: line notes on diff lines become inline comments; chunk notes and notes on lines outside the diff go in the review body. If it says there are no notes, tell the user and stop.
+
+1. Check the run is current: the commit it prints must be the PR's head (`gh pr view <n> --json headRefOid`). If not, ask the user to re-extract and check their notes still sit on the right lines.
+2. Post it unchanged as a **pending** review, which only the user can see until they submit it:
+   ```
+   gh api --method POST repos/<owner>/<repo>/pulls/<n>/reviews --input .spark-joy/<run>/comments.json
+   ```
+   Without `gh`, use your GitHub tools: create a pending review on the printed commit, then add each comment and the body exactly as they appear in the file. Never submit or approve the review.
+3. Reply with the PR link, the comment count, and that the review is pending until they submit it on GitHub.
+
+GitHub only. On other hosts, offer `spark-joy export` for the user to paste.
 
 ## Split mode
 

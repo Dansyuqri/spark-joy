@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
 import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
+import { reviewPayload } from "./lib/comments";
 import { extract } from "./lib/extract";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
@@ -37,6 +38,8 @@ Commands:
   serve                 Open the review app
       --port <n>        Port to listen on (default 4848)
   export                Write review.md with progress, notes and the feature summary
+      --stdout          Print instead of writing the file
+  comments              Write comments.json: your notes as a pending GitHub review, word for word
       --stdout          Print instead of writing the file
   split                 Dry run of a split plan: build the stacked PRs and check they add up
       --check <cmd>     Run cmd on each PR in a temporary worktree, e.g. "npm ci && npm test"
@@ -182,6 +185,26 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         await writeFile(p.review, md);
         console.log(`wrote ${relative(cwd, p.review)}`);
       }
+      return 0;
+    }
+
+    case "comments": {
+      const p = await run(cwd, values.run);
+      const raw = await readPlanRaw(p);
+      const hunks = await readHunks(p);
+      const result = raw === undefined ? undefined : validatePlan(raw, hunks);
+      if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
+      const meta = await readMeta(p);
+      const review = reviewPayload(meta, hunks, result.plan, await readState(p));
+      if (!review.comments.length && !review.body) throw new Error("no notes yet; leave notes in the review app first");
+      const json = JSON.stringify(review, null, 2) + "\n";
+      if (values.stdout) {
+        process.stdout.write(json);
+        return 0;
+      }
+      await writeFile(p.comments, json);
+      console.log(`${review.comments.length} inline comment(s)${review.body ? ", plus notes in the review body" : ""} on ${meta.headSha.slice(0, 7)}`);
+      console.log(`wrote ${relative(cwd, p.comments)}`);
       return 0;
     }
 

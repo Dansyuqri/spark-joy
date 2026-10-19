@@ -19,7 +19,7 @@ AI-written PRs are often thousands of lines long: too big to review properly. sp
 
 Writing the big PR yourself? spark-joy can also split your staged, uncommitted or branch changes into small stacked PRs. See [Split your own changes](#split-your-own-changes).
 
-Works from plain git, so GitHub, GitLab or anything else. Nothing is posted anywhere; notes export as markdown for the PR.
+Works from plain git, so GitHub, GitLab or anything else. Nothing is posted unless you ask; notes export as markdown, or go to a GitHub PR as a pending review.
 
 Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
 
@@ -74,6 +74,8 @@ In the app:
 - Use **↑ 20**, **↓ 20** or **Show all** between hunks to see more context, or **View file** to see the whole file.
 - **Summary → Export review.md** writes a markdown report with progress, notes (including `file:line`) and the feature list.
 
+On GitHub, ask your agent to "post my notes to the PR". It runs `spark-joy comments` and posts your notes, word for word, as a pending review that only you can see until you submit it. Line notes become inline comments; chunk notes go in the review body. The agent never adds comments of its own.
+
 ### Commands
 
 | Command | What it does |
@@ -87,6 +89,7 @@ In the app:
 | `spark-joy validate [--json]` | Check `plan.json` against the hunks |
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |
+| `spark-joy comments [--stdout]` | Write `comments.json`: your notes as a pending GitHub review |
 | `spark-joy split [--check cmd] [--apply]` | Turn a split plan into stacked local branches |
 | `spark-joy install-skill [--agent a] [--project] [--print]` | Install the agent skill |
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../cli/index";
 import { extract } from "../cli/lib/extract";
+import { reviewPayload } from "../cli/lib/comments";
 import { exportMarkdown } from "../cli/lib/export";
 import { expandIds, outline } from "../cli/lib/format";
 import { readHunks, readLinks, readMeta, readState, runPaths, writeJson } from "../cli/lib/runs";
@@ -124,6 +125,34 @@ describe("plan, review and export", () => {
     expect(md).toContain(`  - \`${first.file}:${first.newStart}\` Check this`);
     expect(md).toMatch(/^- \[~\] New return values \(/m);
     expect(md).toMatch(/^- \[ \] Skim \(\d+ hunks\)$/m);
+  });
+
+  it("turns the reviewer's notes into a pending GitHub review, word for word", async () => {
+    const p = runPaths(root, "feature");
+    const meta = await readMeta(p);
+    const { plan } = validatePlan(planFor(hunks), hunks);
+    const del = hunks.find((h) => h.status === "deleted")!;
+    const first = hunks.find((h) => h.file === "src/math.ts")!;
+    const state: ReviewState = { ...emptyState(), strategy: "layers" };
+    state.chunkNotes["layers/core"] = "Why 33?";
+    state.chunkNotes["features/all"] = "  ";
+    state.lineNotes.push(
+      { id: "n1", file: first.file, side: "new", line: first.newStart, text: " Check this ", at: "" },
+      { id: "n2", file: del.file, side: "old", line: del.oldStart, text: "Still used?", at: "" },
+      { id: "n3", file: "src/math.ts", side: "new", line: 1, text: "Outside the diff", at: "" },
+      { id: "n4", file: first.file, side: "new", line: first.newStart, text: "", at: "" },
+    );
+
+    const review = reviewPayload(meta, hunks, plan!, state);
+    expect(review.commit_id).toBe(meta.headSha);
+    expect(review.comments).toEqual([
+      { path: first.file, line: first.newStart, side: "RIGHT", body: "Check this" },
+      { path: del.file, line: del.oldStart, side: "LEFT", body: "Still used?" },
+    ]);
+    expect(review.body).toBe("**Core**\n\nWhy 33?\n\n- `src/math.ts:1` Outside the diff");
+    expect(review).not.toHaveProperty("event");
+
+    expect(() => reviewPayload({ ...meta, source: "staged" }, hunks, plan!, state)).toThrow(/not a PR/);
   });
 
   it("keeps review progress for unchanged hunks after new commits", async () => {
