@@ -64,6 +64,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Fails here if the tag exists, i.e. the last version PR hasn't been merged yet.
           tag="$(npm version "$BUMP" -m "Release %s")"
+          # Also stop if npm already has this version, e.g. after the tag was deleted.
+          name="$(node -p "require('./package.json').name")"
+          if [ -n "$(npm view "$name@${tag#v}" version 2>/dev/null || true)" ]; then
+            echo "$name@${tag#v} is already on npm. Merge its version PR into main, then run this again."
+            exit 1
+          fi
           git push origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - run: npm publish
