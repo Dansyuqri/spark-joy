@@ -1,6 +1,6 @@
 {
   "name": "@dansyuqri/spark-joy",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Break a huge PR into reviewable chunks and review it batch by batch in a local app.",
   "keywords": [
     "code-review",
