@@ -33,7 +33,7 @@ jobs:
           exit 1
       - uses: actions/checkout@v7.0.1
         with:
-          # The manual run needs existing tags to find the last released version.
+          # Fetch tags so npm version refuses a version that's already tagged.
           fetch-depth: 0
       - uses: actions/setup-node@v7.0.0
         with:
@@ -62,14 +62,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Start from the newest of the last tag and package.json, in case a version PR is still open.
-          current="$(node -p "require('./package.json').version")"
-          latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
-          base="$(printf '%s\n' "$current" "${latest#v}" | sort -V | tail -n 1)"
-          npm version "$base" --no-git-tag-version --allow-same-version
-          tag="$(npm version "$BUMP" --no-git-tag-version)"
-          git commit -am "Release ${tag#v}"
-          git tag "$tag"
+          # Fails here if the tag exists, i.e. the last version PR hasn't been merged yet.
+          tag="$(npm version "$BUMP" -m "Release %s")"
           git push origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - run: npm publish
