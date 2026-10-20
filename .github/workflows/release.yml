@@ -3,7 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Run from the Actions tab: bumps package.json, pushes the commit and tag, then publishes.
+  # Run from the Actions tab: bumps the version, pushes only the tag, then publishes.
+  # main stays untouched, so branch rules on main don't block it.
   workflow_dispatch:
     inputs:
       bump:
@@ -19,7 +20,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      # The manual run pushes the version commit and tag.
+      # The manual run pushes the version tag.
       contents: write
       # Trusted publishing: npm verifies this workflow's OIDC token instead of a stored secret.
       id-token: write
@@ -30,6 +31,9 @@ jobs:
           echo "Run this workflow from main, not $GITHUB_REF_NAME"
           exit 1
       - uses: actions/checkout@v7.0.1
+        with:
+          # The manual run needs existing tags to find the last released version.
+          fetch-depth: 0
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 24
@@ -49,13 +53,21 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # Tags pushed with GITHUB_TOKEN don't start other runs, so this run publishes too.
-      - name: Bump version, push commit and tag
+      # The release commit only lives on the tag; main's package.json isn't bumped.
+      - name: Bump version, push tag
         if: github.event_name == 'workflow_dispatch'
         env:
           BUMP: ${{ inputs.bump }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          tag="$(npm version "$BUMP" -m "Release %s")"
-          git push --atomic origin HEAD:main "$tag"
+          # Start from the newest of the last tag and package.json.
+          current="$(node -p "require('./package.json').version")"
+          latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+          base="$(printf '%s\n' "$current" "${latest#v}" | sort -V | tail -n 1)"
+          npm version "$base" --no-git-tag-version --allow-same-version
+          tag="$(npm version "$BUMP" --no-git-tag-version)"
+          git commit -am "Release ${tag#v}"
+          git tag "$tag"
+          git push origin "refs/tags/$tag"
       - run: npm publish
