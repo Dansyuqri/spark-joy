@@ -17,6 +17,7 @@ export interface RunPaths {
   review: string;
   links: string;
   prs: string;
+  comments: string;
 }
 
 export function runPaths(root: string, name: string): RunPaths {
@@ -31,6 +32,7 @@ export function runPaths(root: string, name: string): RunPaths {
     review: join(dir, "review.md"),
     links: join(dir, "links.json"),
     prs: join(dir, "prs.md"),
+    comments: join(dir, "comments.json"),
   };
 }
 
