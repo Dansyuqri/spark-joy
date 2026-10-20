@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Run from the Actions tab: bumps the version, pushes only the tag, then publishes.
-  # main stays untouched, so branch rules on main don't block it.
+  # Run from the Actions tab: bumps the version, pushes the tag, publishes, then opens a PR
+  # that brings the bump to main. Nothing is pushed to main, so branch rules don't block it.
   workflow_dispatch:
     inputs:
       bump:
@@ -20,8 +20,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      # The manual run pushes the version tag.
+      # The manual run pushes the version tag and branch, then opens the version PR.
       contents: write
+      pull-requests: write
       # Trusted publishing: npm verifies this workflow's OIDC token instead of a stored secret.
       id-token: write
     steps:
@@ -53,15 +54,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # Tags pushed with GITHUB_TOKEN don't start other runs, so this run publishes too.
-      # The release commit only lives on the tag; main's package.json isn't bumped.
-      - name: Bump version, push tag
+      - name: Bump version, push tag and branch
+        id: bump
         if: github.event_name == 'workflow_dispatch'
         env:
           BUMP: ${{ inputs.bump }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Start from the newest of the last tag and package.json.
+          # Start from the newest of the last tag and package.json, in case a version PR is still open.
           current="$(node -p "require('./package.json').version")"
           latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
           base="$(printf '%s\n' "$current" "${latest#v}" | sort -V | tail -n 1)"
@@ -69,5 +70,15 @@ jobs:
           tag="$(npm version "$BUMP" --no-git-tag-version)"
           git commit -am "Release ${tag#v}"
           git tag "$tag"
-          git push origin "refs/tags/$tag"
+          git push origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - run: npm publish
+      - name: Open PR to bring the version bump to main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          gh pr create --base main --head "release/$TAG" \
+            --title "Release ${TAG#v}" \
+            --body "Bumps package.json to ${TAG#v}, which was tagged $TAG and published to npm."
