@@ -70,6 +70,7 @@ Inside the repo with the branch checked out, ask your agent to "review this PR i
 In the app:
 
 - `j` / `k` move between chunks and `x` toggles reviewed.
+- Tick **Viewed** on a file's header to mark it reviewed and collapse it. A chunk is done once all its files are viewed. File headers stay pinned while you scroll, so you can tick or collapse without scrolling back up.
 - Click a line number to leave a note on that line.
 - Use **↑ 20**, **↓ 20** or **Show all** between hunks to see more context, or **View file** to see the whole file.
 - **Summary → Export review.md** writes a markdown report with progress, notes (including `file:line`) and the feature list.

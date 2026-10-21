@@ -745,3 +745,32 @@ tr.line.expanded td.no {
 .rubric .risk {
   margin: 0 6px 0 0;
 }
+
+/* Sticky file headers and the viewed checkbox */
+.file {
+  /* Clip, unlike hidden, doesn't make a scroll container, so headers can stick. */
+  overflow: clip;
+}
+.file > summary {
+  position: sticky;
+  top: 53px;
+  z-index: 5;
+  background: var(--panel);
+}
+.file.viewed > summary .path {
+  color: var(--muted);
+}
+.viewed-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.viewed-box input {
+  margin: 0;
+  cursor: pointer;
+}
