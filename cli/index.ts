@@ -7,7 +7,8 @@ import { defaultPrefix } from "../shared/derive";
 import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
 import { gitlabDraftNotes, reviewPayload } from "./lib/comments";
-import { extract } from "./lib/extract";
+import { extract, extractStack } from "./lib/extract";
+import { cliForge, parsePrArg, parseRemote, prName, type ForgeKind } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
@@ -28,6 +29,11 @@ Commands:
       --staged          Only staged changes (HEAD → index); for split
       --uncommitted     Only uncommitted changes (HEAD → working tree); for split
       --split-at <n>    Split hunks longer than n lines (default 150)
+  stack <pr>            Load existing stacked PRs (GitHub) or MRs (GitLab) for review, one chunk per PR.
+                        <pr> is a number or URL anywhere in the stack; needs gh or glab, logged in
+      --prs <a,b,c>     Exactly these PRs, bottom first, instead of finding the stack
+      --remote <name>   Remote the PRs are on (default origin)
+      --forge <name>    github or gitlab, when the remote's host doesn't say
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
       --file <path>     Print every hunk of a file
@@ -87,6 +93,9 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       stdout: { type: "boolean" },
       gitlab: { type: "boolean" },
       project: { type: "boolean" },
+      prs: { type: "string" },
+      remote: { type: "string" },
+      forge: { type: "string" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
     },
@@ -116,6 +125,38 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         console.log(`note: ${r.untracked.length} untracked file(s) are not included; \`git add -N <file>\` to include them`);
       if (await readPlanRaw(r.paths)) console.log("note: plan.json already exists and may be stale; run `spark-joy validate`");
       console.log((await readRubric(r.meta.repoRoot)) ? `risk rubric: ${RUBRIC_FILE}` : "no risk rubric yet");
+      return 0;
+    }
+
+    case "stack": {
+      const forgeKind = values.forge;
+      if (forgeKind !== undefined && forgeKind !== "github" && forgeKind !== "gitlab") throw new Error("--forge must be github or gitlab");
+      const root = await g.repoRoot(cwd);
+      const remoteName = values.remote ?? "origin";
+      const url = (await g.git(root, ["remote", "get-url", remoteName]).catch(() => "")).trim();
+      if (!url) throw new Error(`no remote named ${remoteName}; pass --remote`);
+      const remote = parseRemote(url, forgeKind as ForgeKind | undefined);
+      const prs = values.prs?.split(",").filter((x) => x.trim()).map((x) => parsePrArg(x, remote));
+      if (!prs?.length && !rest[0]) throw new Error("pass a PR number or URL, e.g. `spark-joy stack 12`, or --prs 12,13,14");
+      const splitAt = values["split-at"] ? Number(values["split-at"]) : undefined;
+      if (splitAt !== undefined && !(splitAt >= 40)) throw new Error("--split-at must be a number ≥ 40");
+      const r = await extractStack({
+        cwd,
+        forge: cliForge(remote),
+        remote: remoteName,
+        start: rest[0] ? parsePrArg(rest[0], remote) : undefined,
+        prs,
+        run: values.run,
+        splitAt,
+      });
+      for (const w of r.warnings) console.log(`warn  ${w}`);
+      r.meta.stack!.prs.forEach((p, i) => {
+        const hs = r.hunks.filter((h) => h.pr === p.number);
+        const lines = hs.reduce((n, h) => n + h.added + h.removed, 0);
+        console.log(`${String(i + 1).padStart(2)}  ${prName(remote.forge, p.number)}  ${p.head} → ${p.base}  ${lines} lines  ${p.title}`);
+      });
+      console.log(`wrote ${relative(cwd, r.paths.dir)}, with a plan of one chunk per ${remote.forge === "gitlab" ? "MR" : "PR"}`);
+      console.log(`review it: spark-joy serve --run ${r.paths.name}`);
       return 0;
     }
 
@@ -197,6 +238,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const result = raw === undefined ? undefined : validatePlan(raw, hunks);
       if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
       const meta = await readMeta(p);
+      if (meta.source === "stack") throw new Error("posting notes to stacked PRs isn't supported yet; use `spark-joy export` for review.md");
       const state = await readState(p);
       const review = values.gitlab ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
       const inline = Array.isArray(review) ? review.filter((n) => n.position).length : review.comments.length;
@@ -221,6 +263,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const result = validatePlan(raw, hunks);
       if (!result.ok || !result.plan) throw new Error("the plan has errors; run `spark-joy validate`");
       const meta = await readMeta(p);
+      if (meta.source === "stack") throw new Error("this run is stacked PRs that already exist; there is nothing to split");
       const prefix = values.prefix ?? defaultPrefix(meta.branch);
       const stack = await buildStack({
         root: meta.repoRoot,

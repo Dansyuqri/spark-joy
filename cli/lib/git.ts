@@ -86,8 +86,15 @@ export async function generatedByAttr(cwd: string, files: string[]): Promise<Set
 }
 
 // A changed file as of the diff's end: HEAD, the index, or the working tree.
-export async function fileText(root: string, meta: Meta, path: string): Promise<string> {
+// For a stack, the head of PR `pr` (the top PR when not given).
+export async function fileText(root: string, meta: Meta, path: string, pr?: number): Promise<string> {
   const source = meta.source ?? (meta.working ? "working" : "pr");
+  if (source === "stack") {
+    const prs = meta.stack?.prs ?? [];
+    const at = pr === undefined ? prs.at(-1) : prs.find((p) => p.number === pr);
+    if (!at) throw new Error(`no PR ${pr} in this stack`);
+    return git(root, ["show", `${at.headSha}:${path}`]);
+  }
   if (source === "working" || source === "uncommitted") {
     // Never follow a symlink out of the repo.
     if ((await lstat(join(root, path))).isSymbolicLink()) throw new Error(`${path} is a symlink`);

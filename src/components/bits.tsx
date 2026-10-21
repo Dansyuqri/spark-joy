@@ -1,6 +1,17 @@
 import { Fragment } from "react";
-import type { ChunkStatus } from "../../shared/derive";
+import { prRef, type ChunkStatus } from "../../shared/derive";
+import type { Chunk, Meta } from "../../shared/schema";
 import type { Issue } from "../../shared/validate";
+
+// Stack mode: a link to the PR or MR a chunk is, e.g. "#12".
+export function PrLink({ meta, chunk }: { meta: Meta; chunk: Chunk }) {
+  if (!chunk.pr) return null;
+  return (
+    <a className="pr-link" href={chunk.pr.url} target="_blank" rel="noreferrer" title={`Open ${chunk.pr.url}`}>
+      {prRef(meta, chunk.pr.number)}
+    </a>
+  );
+}
 
 export function StatusIcon({ status }: { status: ChunkStatus }) {
   const label = { done: "Reviewed", partial: "Partly reviewed, or changed since review", todo: "Not reviewed" }[status];

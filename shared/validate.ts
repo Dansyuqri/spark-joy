@@ -91,11 +91,14 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     }
   }
 
-  const split = plan.mode === "split";
+  // Both put every hunk in exactly one PR.
+  const split = plan.mode === "split" || plan.mode === "stack";
+  // Stack chunks are existing PRs, titled and described by their authors.
+  const stack = plan.mode === "stack";
   if (split) {
-    if (plan.strategies.length !== 1 || plan.strategies[0]!.id !== "split")
-      error("strategies", 'split mode takes exactly one strategy, with id "split"');
-    if (plan.skim.length) error("skim", "split mode has no skim; put every hunk in a PR");
+    if (plan.strategies.length !== 1 || plan.strategies[0]!.id !== plan.mode)
+      error("strategies", `${plan.mode} mode takes exactly one strategy, with id "${plan.mode}"`);
+    if (plan.skim.length) error("skim", `${plan.mode} mode has no skim; put every hunk in a PR`);
   } else if (plan.strategies.length < 2)
     warn("strategies", "only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order");
 
@@ -117,9 +120,11 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
       }
       if (chunkIndex.has(c.id)) error(cw, "duplicate chunk id");
       chunkIndex.set(c.id, i);
-      if (c.hunks.length === 0) error(cw, "chunk has no hunks");
-      tooLong(cw, "title", c.title, BUDGET.chunkTitle);
-      tooLong(cw, "intent", c.intent, BUDGET.intent);
+      if (c.hunks.length === 0 && !stack) error(cw, "chunk has no hunks");
+      if (!stack) {
+        tooLong(cw, "title", c.title, BUDGET.chunkTitle);
+        tooLong(cw, "intent", c.intent, BUDGET.intent);
+      }
       if (c.risk === "low") {
         if (c.riskReason) warn(cw, "riskReason on a low-risk chunk; drop it");
       } else if (!c.riskReason) error(cw, `${c.risk} risk needs a riskReason: which rubric item, and where`);
@@ -136,12 +141,13 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
           continue;
         }
         if (seen.has(id)) error(cw, `hunk ${id} is already in chunk ${seen.get(id)}`);
+        else if (stack && h.pr !== c.pr?.number) error(cw, `hunk ${id} is from another PR`);
         else if (skim.has(id)) error(cw, `hunk ${id} is also in skim`);
         seen.set(id, c.id);
         hs.push(h);
       }
       const size = changedLines(hs);
-      if (size > budget) warn(cw, `${size} changed lines exceeds the ${budget}-line budget; consider splitting`);
+      if (size > budget && !stack) warn(cw, `${size} changed lines exceeds the ${budget}-line budget; consider splitting`);
 
       for (const dep of c.dependsOn) {
         const at = chunkIndex.get(dep);

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isIgnorable } from "../shared/derive";
 import type { Hunk } from "../shared/schema";
+import type { Forge, ForgePR } from "../cli/lib/forge";
 
 export function sh(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
@@ -80,4 +81,60 @@ export function planFor(hs: Hunk[]) {
     ],
     features: [{ title: "New return values", description: "f3 and f25 return different values.", hunks: [...code, ...tests] }],
   };
+}
+
+// An origin with a three-PR stack (a on main, b on a, c on b), published under
+// refs/pull/N/head the way GitHub does, and a clone to review it from.
+export function stackRepo() {
+  const dir = mkdtempSync(join(tmpdir(), "spark-joy-pulls-"));
+  const work = join(dir, "work");
+  const origin = join(dir, "origin.git");
+  sh(dir, "init", "-q", "--bare", "-b", "main", origin);
+  sh(dir, "init", "-q", "-b", "main", work);
+  for (const [k, v] of [["user.email", "t@example.com"], ["user.name", "T"], ["commit.gpgsign", "false"]]) sh(work, "config", k!, v!);
+  const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`);
+  const commit = (msg: string) => {
+    sh(work, "add", "-A");
+    sh(work, "commit", "-qm", msg);
+  };
+  write(work, "src/app.ts", lines.join("\n") + "\n");
+  commit("base");
+  sh(work, "checkout", "-qb", "a");
+  write(work, "src/app.ts", lines.map((l, i) => (i === 5 ? "added by a" : l)).join("\n") + "\n");
+  commit("a");
+  sh(work, "checkout", "-qb", "b");
+  write(work, "src/app.ts", lines.map((l, i) => (i === 5 ? "rewritten by b" : l)).join("\n") + "\n");
+  write(work, "src/util.ts", "export const u = 1;\n");
+  commit("b");
+  sh(work, "checkout", "-qb", "c");
+  write(work, "README.md", "# c\n");
+  commit("c");
+  sh(work, "remote", "add", "origin", origin);
+  sh(work, "-c", "push.negotiate=false", "push", "-q", "origin", "main", "a", "b", "c", "a:refs/pull/1/head", "b:refs/pull/2/head", "c:refs/pull/3/head");
+  // Main moves on after the stack was cut.
+  sh(work, "checkout", "-q", "main");
+  write(work, "other.ts", "x\n");
+  commit("main moves");
+  sh(work, "-c", "push.negotiate=false", "push", "-q", "origin", "main");
+
+  const root = join(dir, "clone");
+  sh(dir, "clone", "-q", origin, root);
+  const pr = (number: number, base: string, head: string, body = ""): ForgePR => ({
+    number,
+    title: `PR ${number}`,
+    body,
+    url: `https://github.com/o/r/pull/${number}`,
+    base,
+    head,
+    headSha: "",
+    state: "open",
+    fork: false,
+  });
+  const prs = [pr(1, "main", "a", "First part."), pr(2, "a", "b"), pr(3, "b", "c")];
+  const forge: Forge = {
+    remote: { forge: "github", host: "github.com", path: "o/r" },
+    get: async (n) => prs.find((p) => p.number === n)!,
+    listOpen: async () => prs,
+  };
+  return { dir, root, forge, prs };
 }

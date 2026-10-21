@@ -5,6 +5,7 @@ import {
   notesInHunks,
   setReviewed,
   strategyLabel,
+  unitName,
   type StrategyView,
 } from "../../shared/derive";
 import { fileLinks, mergeLinks, symbolTargets } from "../../shared/graph";
@@ -12,7 +13,7 @@ import type { Hunk, LineNote, Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
 import { DiffView } from "./DiffView";
-import { Kind, Risk, StatusIcon, Text, plural } from "./bits";
+import { Kind, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -82,7 +83,11 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
   const addNote = (n: Omit<LineNote, "id" | "at">) =>
     update((s) => ({
       ...s,
-      lineNotes: [...s.lineNotes, { ...n, id: crypto.randomUUID(), at: new Date().toISOString() }],
+      // In a stack, a line number only means something within its PR.
+      lineNotes: [
+        ...s.lineNotes,
+        { ...n, ...(hunks[0]?.pr !== undefined ? { pr: hunks[0].pr } : {}), id: crypto.randomUUID(), at: new Date().toISOString() },
+      ],
     }));
   const editNote = (id: string, text: string) =>
     update((s) => ({
@@ -133,6 +138,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
         <header className="chunk-head">
           <h1>
             <StatusIcon status={status} /> {current ? current.chunk.title : "Skim"}
+            {current && <PrLink meta={data.meta} chunk={current.chunk} />}
             {current && <Risk risk={current.chunk.risk} reason={current.chunk.riskReason} />}
             {current && <Kind kind={current.chunk.kind} />}
           </h1>
@@ -146,10 +152,20 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
             {plural(files, "file")}
             {status === "partial" && ` · ${viewedFiles}/${files} viewed`}
           </div>
-          {current && (
-            <p className="intent">
-              <Text>{current.chunk.intent}</Text>
-            </p>
+          {current && plan.mode === "stack" ? (
+            // The PR's own description, which can run long.
+            <details className="description" open={current.chunk.intent.length <= 400}>
+              <summary>Description</summary>
+              <p className="intent">
+                <Text>{current.chunk.intent}</Text>
+              </p>
+            </details>
+          ) : (
+            current && (
+              <p className="intent">
+                <Text>{current.chunk.intent}</Text>
+              </p>
+            )
           )}
           {current && current.chunk.reviewFocus.length > 0 && (
             <ul className="focus">
@@ -176,7 +192,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
           reviewed={reviewed}
           onViewed={(hs, on) => update((s) => setReviewed(s, hs, on))}
           collapsed={index === "skim"}
-          unit={plan.mode === "split" ? "PR" : "chunk"}
+          unit={unitName(plan, data.meta)}
         />
 
         <footer className="chunk-foot">

@@ -34,6 +34,9 @@ export const Hunk = z.object({
   flags: z.array(HunkFlag),
   // Set when a large hunk was split into pieces; points at the original id.
   parent: z.string().optional(),
+  // Stack runs: the number of the PR or MR this hunk is from. Each PR is
+  // diffed against the one below it, so hunks are only comparable within one.
+  pr: z.number().int().optional(),
 });
 export type Hunk = z.infer<typeof Hunk>;
 
@@ -48,7 +51,28 @@ export const Meta = z.object({
   working: z.boolean(),
   // What the diff covers. `mergeBase` is the commit it starts from: the
   // merge-base for "pr" and "working", HEAD for "staged" and "uncommitted".
-  source: z.enum(["pr", "working", "staged", "uncommitted"]).optional(),
+  // "stack" holds existing PRs or MRs: `mergeBase` is where the bottom one
+  // starts and `headSha` the top one's head.
+  source: z.enum(["pr", "working", "staged", "uncommitted", "stack"]).optional(),
+  stack: z
+    .object({
+      forge: z.enum(["github", "gitlab"]),
+      host: z.string(),
+      repo: z.string(),
+      // Bottom first.
+      prs: z.array(
+        z.object({
+          number: z.number().int(),
+          url: z.string(),
+          title: z.string(),
+          base: z.string(),
+          head: z.string(),
+          mergeBase: z.string(),
+          headSha: z.string(),
+        }),
+      ),
+    })
+    .optional(),
   createdAt: z.string(),
   stats: z.object({
     files: z.number().int(),
@@ -75,6 +99,8 @@ export const Chunk = z.object({
   riskReason: z.string().min(1).optional(),
   // Split mode: the branch this chunk becomes.
   branch: z.string().min(1).optional(),
+  // Stack mode: the PR or MR this chunk is.
+  pr: z.object({ number: z.number().int(), url: z.string() }).optional(),
 });
 export type Chunk = z.infer<typeof Chunk>;
 
@@ -110,8 +136,9 @@ export const PlanLink = z.object({
 export type PlanLink = z.infer<typeof PlanLink>;
 
 export const Plan = z.object({
-  // "split" turns the plan into stacked PRs for the author instead of a review.
-  mode: z.enum(["review", "split"]).default("review"),
+  // "split" turns the plan into stacked PRs for the author instead of a review;
+  // "stack" reviews existing stacked PRs, one chunk per PR.
+  mode: z.enum(["review", "split", "stack"]).default("review"),
   title: z.string().optional(),
   overview: z.string().optional(),
   strategies: z.array(Strategy).min(1),
@@ -126,6 +153,8 @@ export const LineNote = z.object({
   file: z.string(),
   side: z.enum(["old", "new"]),
   line: z.number().int(),
+  // Stack runs: the PR the note was left on, since a line differs between PRs.
+  pr: z.number().int().optional(),
   text: z.string(),
   at: z.string(),
 });

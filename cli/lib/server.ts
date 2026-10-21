@@ -90,11 +90,13 @@ export async function serve(opts: ServeOptions): Promise<{ url: string; close: (
       // in the diff, so this can't read anything else on disk.
       if (url.pathname === "/api/file" && req.method === "GET") {
         const path = url.searchParams.get("path") ?? "";
+        // Stack runs: which PR's version of the file.
+        const pr = url.searchParams.has("pr") ? Number(url.searchParams.get("pr")) : undefined;
         const [meta, hunks] = await Promise.all([readMeta(paths), readHunks(paths)]);
-        const hs = hunks.filter((h) => h.file === path);
+        const hs = hunks.filter((h) => h.file === path && (pr === undefined || h.pr === pr));
         if (!hs.length || hs[0]!.status === "deleted" || hs.some((h) => h.flags.includes("binary")))
           return send(res, 404, { error: "no text for that file" });
-        const text = await fileText(meta.repoRoot, meta, path).catch(() => undefined);
+        const text = await fileText(meta.repoRoot, meta, path, pr).catch(() => undefined);
         if (text === undefined) return send(res, 404, { error: "no text for that file" });
         if (text.length > MAX_FILE || text.includes("\0")) return send(res, 404, { error: "file too large or binary" });
         const lines = text.split("\n");

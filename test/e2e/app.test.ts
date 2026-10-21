@@ -3,10 +3,10 @@ import { request } from "node:http";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { extract } from "../../cli/lib/extract";
+import { extract, extractStack } from "../../cli/lib/extract";
 import { readState, runPaths, writeJson } from "../../cli/lib/runs";
 import { serve } from "../../cli/lib/server";
-import { makeRepo, planFor } from "../fixture";
+import { makeRepo, planFor, stackRepo } from "../fixture";
 
 const appDir = join(__dirname, "../../dist/app");
 // Use a preinstalled Chromium when there is one; otherwise Playwright's own download (CI).
@@ -282,6 +282,46 @@ describe("review app", () => {
       await page.getByRole("heading", { name: /First value/ }).waitFor();
     } finally {
       await s.close();
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("reviews existing stacked PRs, each against the one below it", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const repo = stackRepo();
+    const { paths } = await extractStack({ cwd: repo.root, forge: repo.forge, remote: "origin", start: 3 });
+    const s = await serve({ paths, appDir, port: 0 });
+    try {
+      await page.goto(`${s.url}/#/plan`);
+      await page.locator(".stats", { hasText: "3 PRs" }).waitFor();
+      await expect(page.locator(".hint").count()).resolves.toBe(0);
+      await page.getByRole("button", { name: "Start" }).click();
+
+      const head = page.locator(".chunk-head");
+      await page.getByRole("heading", { name: /PR 1/ }).waitFor();
+      await expect(head.getByRole("link", { name: "#1" }).getAttribute("href")).resolves.toBe("https://github.com/o/r/pull/1");
+      await expect(head.locator(".description").textContent()).resolves.toContain("First part.");
+      await page.screenshot({ path: process.env.SHOT_STACK ?? "/dev/null" }).catch(() => {});
+
+      // Expanding context reads PR 2's own version of the file.
+      await page.goto(`${s.url}/#/review/2`);
+      await page.getByRole("heading", { name: /PR 2/ }).waitFor();
+      const app = page.locator('details[id="file-src/app.ts"]');
+      await app.locator(".gap-row button").first().click();
+      await app.locator("tr.line", { hasText: "line 0" }).waitFor();
+
+      await app.getByRole("link", { name: "Across PRs" }).click();
+      await expect.poll(() => page.locator(".carousel .panel").count()).toBe(3);
+      await expect(page.getByRole("region", { name: "PR #1" }).locator("tr.line.add").textContent()).resolves.toContain("added by a");
+      const pr2 = page.getByRole("region", { name: "PR #2" });
+      await expect(pr2.locator("tr.line.del").textContent()).resolves.toContain("added by a");
+      await expect(pr2.locator("tr.line.add").textContent()).resolves.toContain("rewritten by b");
+      await expect(page.getByRole("region", { name: "PR #3" }).textContent()).resolves.toContain("No changes in this PR");
+      await page.screenshot({ path: process.env.SHOT_STACK_ACROSS ?? "/dev/null" }).catch(() => {});
+    } finally {
+      await s.close();
+      rmSync(repo.dir, { recursive: true, force: true });
     }
     expect(errors).toEqual([]);
   });

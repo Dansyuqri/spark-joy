@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { branchName, defaultPrefix, fileSteps, hunkStatus, numberLines, viewFiles, type FileStep, type StrategyView } from "../../shared/derive";
+import { branchName, defaultPrefix, fileSteps, hunkStatus, numberLines, prRef, unitName, viewFiles, type FileStep, type StrategyView } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref } from "../App";
@@ -18,8 +18,8 @@ interface Props {
 // One file's diff in each chunk side by side, so the reader can follow how it
 // changes from PR to PR.
 export function FilePage({ data, plan, view, state, path, at }: Props) {
-  const split = plan.mode === "split";
-  const unit = split ? "PR" : "chunk";
+  const split = plan.mode !== "review";
+  const unit = unitName(plan, data.meta);
   const files = useMemo(() => viewFiles(view), [view]);
   const steps = useMemo(() => fileSteps(view, path), [view, path]);
   const reviewed = new Set(state.reviewed);
@@ -77,7 +77,12 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const name = (s: FileStep) => (s.at === "skim" ? "Skim" : `${unit === "PR" ? "PR" : "Chunk"} ${s.at + 1}`);
+  const name = (s: FileStep) =>
+    s.at === "skim"
+      ? "Skim"
+      : s.chunk?.pr
+        ? `${unit} ${prRef(data.meta, s.chunk.pr.number)}`
+        : `${unit === "chunk" ? "Chunk" : unit} ${s.at + 1}`;
   // What the file looks like going into a step: after the last step that touched it.
   const sameAs = (i: number) => {
     const before = steps.slice(0, i).reverse().find((s) => s.hunks.length > 0);
@@ -143,7 +148,13 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
               <header>
                 <div className="panel-title">
                   {s.hunks.length > 0 && <StatusIcon status={hunkStatus(s.hunks, reviewed)} />}
-                  <span className="n">{name(s)}</span>
+                  {s.chunk?.pr ? (
+                    <a className="n" href={s.chunk.pr.url} target="_blank" rel="noreferrer" title={`Open ${s.chunk.pr.url}`}>
+                      {name(s)}
+                    </a>
+                  ) : (
+                    <span className="n">{name(s)}</span>
+                  )}
                   <span className="title">{s.chunk?.title ?? "Mechanical changes"}</span>
                 </div>
                 <div className="panel-meta small">
