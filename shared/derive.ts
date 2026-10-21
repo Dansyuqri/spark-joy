@@ -163,3 +163,25 @@ export function fileSegments(fileHunks: readonly Hunk[], shown: ReadonlySet<stri
   out.push({ kind: "gap", from: next, oldOffset: offset });
   return out;
 }
+
+// One file across every chunk of a view, in order, plus skim when it has any of
+// the file's hunks. Chunks that don't touch the file get an empty step, so the
+// reader sees where it stays the same.
+export interface FileStep {
+  at: number | "skim";
+  chunk?: Chunk;
+  hunks: Hunk[];
+}
+
+export function fileSteps(view: StrategyView, file: string): FileStep[] {
+  const own = (hs: readonly Hunk[]) => hs.filter((h) => h.file === file).sort((a, b) => a.newStart - b.newStart);
+  const steps: FileStep[] = view.chunks.map((c) => ({ at: c.index, chunk: c.chunk, hunks: own(c.hunks) }));
+  const skim = own(view.skim);
+  if (skim.length) steps.push({ at: "skim", hunks: skim });
+  return steps;
+}
+
+// Files the view touches, in the order they first appear.
+export function viewFiles(view: StrategyView): string[] {
+  return [...new Set([...view.chunks.flatMap((c) => c.hunks), ...view.skim].map((h) => h.file))];
+}

@@ -176,6 +176,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
           reviewed={reviewed}
           onViewed={(hs, on) => update((s) => setReviewed(s, hs, on))}
           collapsed={index === "skim"}
+          unit={plan.mode === "split" ? "PR" : "chunk"}
         />
 
         <footer className="chunk-foot">

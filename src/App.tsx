@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { headLabel, progress, strategyView } from "../shared/derive";
 import type { ReviewState } from "../shared/schema";
 import { loadRun, saveState, type RunData } from "./api";
+import { FilePage } from "./components/FilePage";
 import { MapPage } from "./components/MapPage";
 import { PlanPage } from "./components/PlanPage";
 import { ReviewPage } from "./components/ReviewPage";
@@ -12,6 +13,8 @@ export type Route =
   | { page: "plan" }
   | { page: "map"; chunk?: number }
   | { page: "review"; chunk: number | "skim"; file?: string; hunk?: string }
+  // One file across every chunk; `chunk` is the one to start on.
+  | { page: "file"; path: string; chunk?: number | "skim" }
   | { page: "summary" };
 
 const chunkArg = (arg: string | undefined) => Math.max(0, Number(arg ?? 1) - 1) || 0;
@@ -22,6 +25,11 @@ function parseRoute(hash: string): Route | undefined {
   if (page === "plan") return { page: "plan" };
   if (page === "summary") return { page: "summary" };
   if (page === "map") return { page: "map", chunk: arg ? chunkArg(arg) : undefined };
+  if (page === "file") {
+    const q = new URLSearchParams(query);
+    const at = q.get("at") ?? undefined;
+    return { page: "file", path: q.get("path") ?? "", chunk: at === "skim" ? "skim" : at ? chunkArg(at) : undefined };
+  }
   if (page === "review") {
     const q = new URLSearchParams(query);
     return {
@@ -35,6 +43,11 @@ function parseRoute(hash: string): Route | undefined {
 }
 
 export function routeHref(r: Route): string {
+  if (r.page === "file") {
+    const q = new URLSearchParams({ path: r.path });
+    if (r.chunk !== undefined) q.set("at", r.chunk === "skim" ? "skim" : String(r.chunk + 1));
+    return `#/file?${q}`;
+  }
   if (r.page !== "review") return `#/${r.page}`;
   const q = new URLSearchParams();
   if (r.file) q.set("file", r.file);
@@ -151,7 +164,7 @@ export function App() {
           <a className={current.page === "map" ? "on" : ""} href="#/map">
             Map
           </a>
-          <a className={current.page === "review" ? "on" : ""} href={routeHref({ page: "review", chunk: 0 })}>
+          <a className={current.page === "review" || current.page === "file" ? "on" : ""} href={routeHref({ page: "review", chunk: 0 })}>
             Review
           </a>
           <a className={current.page === "summary" ? "on" : ""} href="#/summary">
@@ -185,6 +198,8 @@ export function App() {
         <PlanPage data={data} plan={data.plan} state={state} update={update} />
       ) : current.page === "map" ? (
         <MapPage data={data} plan={data.plan} view={view} state={state} at={current.chunk} />
+      ) : current.page === "file" ? (
+        <FilePage data={data} plan={data.plan} view={view} state={state} path={current.path} at={current.chunk} />
       ) : current.page === "summary" ? (
         <SummaryPage data={data} plan={data.plan} view={view} state={state} flush={flush} />
       ) : (
