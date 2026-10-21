@@ -225,6 +225,66 @@ describe("review app", () => {
     }
   });
 
+  it("shows one file's diff in each split PR side by side", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const { hunks, paths } = await extract({ cwd: root, base: "main", run: "across" });
+    // math.ts changes in PRs 1 and 3; PR 2 leaves it alone.
+    const math = hunks.filter((h) => h.file === "src/math.ts");
+    expect(math.length).toBe(2);
+    const rest = hunks.filter((h) => h.file !== "src/math.ts" && !h.flags.includes("lockfile"));
+    await writeJson(paths.plan, {
+      mode: "split",
+      strategies: [
+        {
+          id: "split",
+          chunks: [
+            { id: "a", title: "First value", intent: "f3.", hunks: [math[0]!.id] },
+            { id: "b", title: "Everything else", intent: "Rest.", hunks: rest.map((h) => h.id) },
+            { id: "c", title: "Second value", intent: "f25.", hunks: [math[1]!.id] },
+          ],
+        },
+      ],
+    });
+    const s = await serve({ paths, appDir, port: 0 });
+    try {
+      await page.goto(`${s.url}/#/review/3`);
+      const file = page.locator('details[id="file-src/math.ts"]');
+      await file.getByRole("link", { name: "Across PRs" }).click();
+      await page.waitForURL((u) => u.hash === "#/file?path=src%2Fmath.ts&at=3");
+
+      const panels = page.locator(".carousel .panel");
+      await expect.poll(() => panels.count()).toBe(3);
+      await expect(page.locator(".across-head").textContent()).resolves.toContain("Changed in 2 of 3 PRs");
+      const pr2 = page.getByRole("region", { name: "PR 2" });
+      await expect(pr2.textContent()).resolves.toContain("No changes in this PR");
+      await expect(pr2.textContent()).resolves.toContain("Same as after PR 1.");
+      await expect(page.getByRole("region", { name: "PR 1" }).locator("tr.line.add").textContent()).resolves.toContain("return 33;");
+      await expect(page.getByRole("region", { name: "PR 3" }).locator("tr.line.add").textContent()).resolves.toContain("return -25;");
+      await expect(page.getByRole("region", { name: "PR 1" }).locator("code.branch").textContent()).resolves.toBe(
+        "feature-split/1-first-value",
+      );
+
+      // It opens on the PR it came from, and moves with the keys and the step buttons.
+      const on = () => page.locator(".steps .step.on").textContent();
+      await expect.poll(on).toBe("3");
+      await page.keyboard.press("k");
+      await expect.poll(on).toBe("2");
+      await page.locator(".steps .step", { hasText: "1" }).click();
+      await expect.poll(on).toBe("1");
+      await expect.poll(() => page.locator(".carousel").evaluate((t) => t.scrollLeft)).toBe(0);
+      await page.screenshot({ path: process.env.SHOT_ACROSS ?? "/dev/null" }).catch(() => {});
+
+      // Back to review on the PR in focus.
+      await page.getByRole("link", { name: "← Review" }).click();
+      await page.waitForURL((u) => u.hash.startsWith("#/review/1?file="));
+      await page.getByRole("heading", { name: /First value/ }).waitFor();
+    } finally {
+      await s.close();
+    }
+    expect(errors).toEqual([]);
+  });
+
   it("rejects requests for other hosts and cross-origin writes", async () => {
     // fetch() won't let us set Host, so use a raw request.
     const { hostname, port } = new URL(server.url);

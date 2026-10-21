@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fileSegments } from "../shared/derive";
+import { fileSegments, fileSteps, viewFiles } from "../shared/derive";
 import type { Hunk } from "../shared/schema";
 
 const hunk = (id: string, oldStart: number, oldLines: number, newStart: number, newLines: number, over: Partial<Hunk> = {}): Hunk => ({
@@ -27,5 +27,37 @@ describe("fileSegments", () => {
   it("has no gaps for added files and placeholders", () => {
     expect(shape(fileSegments([hunk("h1", 0, 0, 1, 5, { status: "added" })], new Set(["h1"])))).toEqual(["h1"]);
     expect(shape(fileSegments([hunk("h1", 0, 0, 0, 0, { lines: [], flags: ["mode"] })], new Set(["h1"])))).toEqual(["h1"]);
+  });
+});
+
+describe("fileSteps", () => {
+  const h1 = hunk("h1", 30, 1, 30, 1);
+  const h2 = hunk("h2", 1, 1, 1, 1);
+  const other = hunk("o", 1, 1, 1, 1, { file: "b.ts" });
+  const skim = hunk("s", 50, 1, 50, 1, { flags: ["whitespace-only"] });
+  const chunk = (id: string, hunks: Hunk[], index: number) => ({
+    chunk: { id, title: id, intent: id, kind: "core" as const, hunks: hunks.map((h) => h.id), dependsOn: [], reviewFocus: [], risk: "low" as const },
+    index,
+    hunks,
+    size: 0,
+  });
+  const view = {
+    strategy: { id: "split", chunks: [] },
+    chunks: [chunk("one", [h1, other, h2], 0), chunk("two", [other], 1), chunk("three", [], 2), chunk("four", [h2], 3)],
+    skim: [] as Hunk[],
+  };
+
+  it("has a step per chunk, empty where the file is untouched, hunks in file order", () => {
+    const steps = fileSteps(view, "a.ts");
+    expect(steps.map((s) => [s.at, s.hunks.map((h) => h.id)])).toEqual([[0, ["h2", "h1"]], [1, []], [2, []], [3, ["h2"]]]);
+  });
+
+  it("adds skim only when the file has skim hunks", () => {
+    expect(fileSteps({ ...view, skim: [skim] }, "a.ts").at(-1)).toMatchObject({ at: "skim", hunks: [skim] });
+    expect(fileSteps({ ...view, skim: [skim] }, "b.ts").at(-1)?.at).toBe(3);
+  });
+
+  it("lists the view's files once each", () => {
+    expect(viewFiles({ ...view, skim: [skim] })).toEqual(["a.ts", "b.ts"]);
   });
 });

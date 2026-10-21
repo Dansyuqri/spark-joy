@@ -25,6 +25,8 @@ interface Props {
   reviewed: ReadonlySet<string>;
   onViewed: (hunks: Hunk[], on: boolean) => void;
   collapsed?: boolean;
+  // What a chunk is called ("PR" in split mode), for the link to the file across chunks.
+  unit?: string;
 }
 
 type Anchor = { file: string; side: "old" | "new"; line: number };
@@ -101,7 +103,7 @@ function RelatedRow({ links }: { links: FileLinks }) {
   );
 }
 
-export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed }: Props) {
+export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed, unit = "chunk" }: Props) {
   const [composing, setComposing] = useState<Anchor>();
   const [texts, setTexts] = useState<Record<string, FileText>>({});
   // Lines revealed in each gap, from its top and from its bottom.
@@ -245,6 +247,14 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
                   {whole[file] ? "Diff only" : "View file"}
                 </button>
               )}
+              <a
+                className="across-link"
+                href={routeHref({ page: "file", path: file, chunk: chunkOf.get(first.id) ?? "skim" })}
+                title={`This file's changes in every ${unit}, side by side`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Across {unit}s
+              </a>
               <label className="viewed-box" title="Mark this file reviewed" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
