@@ -116,7 +116,7 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
   const load = async (file: string, hs: Hunk[]) => {
     if (texts[file]) return;
     setTexts((t) => ({ ...t, [file]: "loading" }));
-    const text: FileText = await loadFile(file).then(
+    const text: FileText = await loadFile(file, hs[0]?.pr).then(
       ({ lines }) => (matches(lines, hs) ? lines : "stale"),
       () => "error",
     );
@@ -201,7 +201,8 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
     <div className="diff">
       {files.map(({ file, hunks: hs }, fi) => {
         const first = hs[0]!;
-        const fileHunks = allHunks.filter((h) => h.file === file);
+        // In a stack each PR has its own diff of the file.
+        const fileHunks = allHunks.filter((h) => h.file === file && h.pr === first.pr);
         const segments = fileSegments(fileHunks, shownIds);
         const hasGaps = segments.some((x) => x.kind === "gap");
         const added = hs.reduce((n, h) => n + h.added, 0);

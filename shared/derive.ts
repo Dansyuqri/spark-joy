@@ -10,7 +10,7 @@ export const changedLines = (hs: readonly Hunk[]): number =>
 
 // What the diff ends at.
 export const headLabel = (meta: Meta): string =>
-  meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
+  meta.stack ? `${prRef(meta, meta.stack.prs.at(-1)?.number ?? 0)} ${meta.headSha.slice(0, 8)}` : meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
 
 const branchSlug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "pr";
@@ -20,8 +20,16 @@ export const defaultPrefix = (branch: string) => (branch === "HEAD" ? "split" : 
 
 export const branchName = (prefix: string, n: number, c: Chunk) => c.branch ?? `${prefix}/${n}-${branchSlug(c.title)}`;
 
-const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs" };
+const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs", stack: "Stacked PRs" };
 export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ?? s.id;
+
+// What a chunk is called: "MR" for a GitLab stack, "PR" for any other stack or
+// a split, otherwise "chunk".
+export const unitName = (plan: Plan, meta: Meta): string =>
+  plan.mode === "review" ? "chunk" : meta.stack?.forge === "gitlab" ? "MR" : "PR";
+
+// "#12" on GitHub, "!12" on GitLab.
+export const prRef = (meta: Meta, n: number): string => `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`;
 
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;
 
@@ -122,7 +130,7 @@ export function numberLines(h: Hunk): NumberedLine[] {
 export function notesInHunks(hs: readonly Hunk[], notes: readonly LineNote[]): LineNote[] {
   return notes.filter((n) =>
     hs.some((h) => {
-      if (h.file !== n.file) return false;
+      if (h.file !== n.file || h.pr !== n.pr) return false;
       const [start, len] = n.side === "new" ? [h.newStart, h.newLines] : [h.oldStart, h.oldLines];
       return n.line >= start && n.line < start + len;
     }),

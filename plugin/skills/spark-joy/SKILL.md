@@ -1,6 +1,6 @@
 ---
 name: spark-joy
-description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR or MR as a pending GitHub review or GitLab draft notes. Use when the user wants help reviewing a big PR, MR or branch, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or load an existing stack of PRs/MRs for review, one PR per chunk; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR or MR as a pending GitHub review or GitLab draft notes. Use when the user wants help reviewing a big PR, MR or branch, or a stack of PRs or MRs, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
 ---
 
 # spark-joy
@@ -8,6 +8,7 @@ description: Break a large PR/MR into small, ordered chunks and open a local app
 You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two modes, plus one follow-up:
 - **Review** (default): someone else's PR, read in chunks. Steps 1–5.
 - **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode).
+- **Stack**: existing stacked PRs or MRs on GitHub or GitLab, one chunk per PR. [Stacked PRs](#stacked-prs).
 - **Post notes**: the reviewer's own notes go to the PR or MR as a pending review. [Step 7](#7-post-the-reviewers-notes-only-when-asked).
 
 The reader is a tired human. **Every word you write is load on them. Be terse.**
@@ -202,6 +203,17 @@ Then:
 3. `spark-joy split`: a dry run that checks the PRs add up to exactly the original changes.
 4. If the repo has a fast test command: `spark-joy split --check "<install && test>"`. Each PR runs in a fresh worktree, so include the install step. Fix the plan if a PR fails.
 5. Ask the user, then run `spark-joy split --apply`. It creates local branches only and leaves the working tree alone. Reply with the branch list and the path to `prs.md`. Never push.
+
+## Stacked PRs
+
+Use it when the user wants to review PRs or MRs that are already stacked (each one's base is the branch of the one below). It needs `gh` or `glab`, logged in.
+
+```
+spark-joy stack <n or URL>          # any PR in the stack; spark-joy finds the rest
+spark-joy stack --prs 12,13,14      # exactly these, bottom first
+```
+
+It fetches each PR's head, diffs it against the PR below it, and writes the plan itself: one chunk per PR, titled and described by the PR. Pass on any `warn` lines (a fork in the stack, a merged PR). Then `spark-joy serve --run <run>` in the background as in step 6; there's nothing to plan. You may add `risk`, `riskReason` and `reviewFocus` to its chunks after agreeing risk as in step 3; they survive a re-import. `comments` doesn't support stacks yet; offer `spark-joy export`.
 
 ## After new commits
 

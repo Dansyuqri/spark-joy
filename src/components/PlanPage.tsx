@@ -1,8 +1,8 @@
-import { branchName, defaultPrefix, hunkStatus, strategyLabel, strategyView } from "../../shared/derive";
+import { branchName, defaultPrefix, hunkStatus, strategyLabel, strategyView, unitName } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
-import { Issues, Kind, Risk, StatusIcon, Text, plural } from "./bits";
+import { Issues, Kind, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -13,7 +13,8 @@ interface Props {
 
 export function PlanPage({ data, plan, state, update }: Props) {
   const reviewed = new Set(state.reviewed);
-  const split = plan.mode === "split";
+  const split = plan.mode !== "review";
+  const unit = unitName(plan, data.meta);
   const prefix = defaultPrefix(data.meta.branch);
 
   return (
@@ -48,7 +49,7 @@ export function PlanPage({ data, plan, state, update }: Props) {
             <section key={s.id} className={`strategy ${isOn ? "on" : ""}`}>
               <h3>{strategyLabel(s)}</h3>
               <p className="stats">
-                {plural(s.chunks.length, split ? "PR" : "chunk")} · max {largest} lines
+                {plural(s.chunks.length, unit)} · max {largest} lines
               </p>
               <ol className="chunk-list">
                 {view.chunks.map((c) => (
@@ -57,6 +58,7 @@ export function PlanPage({ data, plan, state, update }: Props) {
                     <span className="n">{c.index + 1}</span>
                     <span className="title">
                       {c.chunk.title}
+                      <PrLink meta={data.meta} chunk={c.chunk} />
                       {split && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
                     </span>
                     <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
@@ -74,7 +76,7 @@ export function PlanPage({ data, plan, state, update }: Props) {
               >
                 {isOn ? "Continue" : "Start"}
               </button>
-              {split && (
+              {plan.mode === "split" && (
                 <p className="hint">
                   Create the branches: <code>spark-joy split --apply</code>
                 </p>

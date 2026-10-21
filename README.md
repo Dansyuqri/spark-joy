@@ -17,6 +17,8 @@ AI-written PRs are often thousands of lines long: too big to review properly. sp
 
 <p align="center"><img src="assets/demo.gif" width="800" alt="Choosing a review order, reviewing a chunk with a line note, then zooming into a chunk on the map"></p>
 
+Reviewing a stack of PRs someone already opened? spark-joy loads them straight from GitHub or GitLab. See [Review stacked PRs](#review-stacked-prs).
+
 Writing the big PR yourself? spark-joy can also split your staged, uncommitted or branch changes into small stacked PRs. See [Split your own changes](#split-your-own-changes).
 
 Works from plain git, so GitHub, GitLab or anything else. Nothing is posted unless you ask; notes export as markdown, or go to the PR as a pending review.
@@ -85,6 +87,7 @@ On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark
 | --- | --- |
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
 | `spark-joy extract --staged \| --uncommitted` | Diff `HEAD` against the index or the working tree, for splitting |
+| `spark-joy stack <pr> \| --prs a,b,c` | Load existing stacked PRs or MRs into a run, one chunk per PR |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
 | `spark-joy links` | Cross-file links: which hunk uses a name another defines |
@@ -119,6 +122,22 @@ spark-joy split --apply                         # creates <branch>-split/1-…, 
 ```
 
 Your working tree, staged files and current branch are never touched: the PRs are built from a temporary git index. If anything doesn't add up, no branches are created.
+
+## Review stacked PRs
+
+Got a stack of PRs on GitHub, or MRs on GitLab, where each one is based on the branch of the one below? Load them and review them like a split: one chunk per PR, with **Across PRs** showing how a file changes from PR to PR.
+
+```sh
+spark-joy stack 12                  # or a PR/MR URL; any PR in the stack works
+spark-joy stack --prs 12,13,14      # exactly these, bottom first
+spark-joy serve --run pr-12-stack
+```
+
+- It finds the rest of the stack by following base branches down and open PRs based on each head up. If two PRs build on the same one, it follows the lower number and says so; use `--prs` to pick.
+- Each PR is fetched (`refs/pull/N/head` or `refs/merge-requests/N/head`, kept under `refs/spark-joy/`) and diffed against the PR below it, so you see only what that PR changes, even where it rewrites lines from an earlier PR.
+- The plan is written for you from each PR's title and description, with a link to the PR. Your agent can add risk and review focus; they're kept when you import the stack again after new pushes.
+- It talks to the forge through `gh` or `glab`, so it uses their login and stores no tokens. The forge comes from the remote's host; pass `--forge github|gitlab` for a self-hosted one whose name doesn't say, and `--remote` if the PRs aren't on `origin`.
+- Posting your notes back with `comments` doesn't support stacks yet; `export` works.
 
 ## Develop
 
