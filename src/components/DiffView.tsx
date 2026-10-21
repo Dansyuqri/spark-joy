@@ -1,5 +1,6 @@
-import { Fragment, useState, type SyntheticEvent } from "react";
+import { Fragment, useState, type ReactNode, type SyntheticEvent } from "react";
 import { fileSegments, numberLines, type FileSegment, type NumberedLine } from "../../shared/derive";
+import type { FileLinks, LinkTarget, RelatedFile } from "../../shared/graph";
 import type { Hunk, LineNote } from "../../shared/schema";
 import { loadFile } from "../api";
 import { routeHref } from "../App";
@@ -12,6 +13,10 @@ interface Props {
   allHunks: Hunk[];
   // Chunk index of each hunk in the current order; missing means skim.
   chunkOf: ReadonlyMap<string, number>;
+  // Other files each shown file uses or is used by.
+  related?: ReadonlyMap<string, FileLinks>;
+  // Per hunk: names it uses that another file defines, and where.
+  symbols?: ReadonlyMap<string, ReadonlyMap<string, LinkTarget>>;
   notes: LineNote[];
   onAdd: (n: Omit<LineNote, "id" | "at">) => void;
   onEdit: (id: string, text: string) => void;
@@ -44,7 +49,59 @@ function keepInView(e: SyntheticEvent<HTMLDetailsElement>) {
   if (!el.open && el.getBoundingClientRect().top < TOP) el.scrollIntoView({ block: "start" });
 }
 
-export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed }: Props) {
+const targetHref = (t: LinkTarget) => routeHref({ page: "review", chunk: t.chunk, file: t.file, hunk: t.hunk });
+const chunkLabel = (t: LinkTarget) => (t.chunk === "skim" ? "skim" : `chunk ${t.chunk + 1}`);
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+const IDENT = /[A-Za-z_$][\w$]*/g;
+
+// A line's text with the names linked in `targets` turned into links.
+function linkSymbols(text: string, targets: ReadonlyMap<string, LinkTarget> | undefined) {
+  if (!targets?.size) return text;
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(IDENT)) {
+    const t = targets.get(m[0]);
+    if (!t) continue;
+    out.push(text.slice(last, m.index));
+    out.push(
+      <a key={m.index} className="symbol" href={targetHref(t)} title={`Defined in ${t.file} (${chunkLabel(t)})`}>
+        {m[0]}
+      </a>,
+    );
+    last = m.index! + m[0].length;
+  }
+  if (!out.length) return text;
+  out.push(text.slice(last));
+  return out;
+}
+
+function RelatedRow({ links }: { links: FileLinks }) {
+  const item = (r: RelatedFile) => {
+    const why = r.labels.length ? r.labels.join(", ") : r.symbols.join(", ");
+    return (
+      <a key={r.file} href={targetHref(r)} title={`${r.file}${why ? ` · ${why}` : ""}`}>
+        {baseName(r.file)} <span className="where">{chunkLabel(r)}</span>
+      </a>
+    );
+  };
+  return (
+    <div className="related">
+      {links.uses.length > 0 && (
+        <span>
+          <span className="muted">Uses</span> {links.uses.map(item)}
+        </span>
+      )}
+      {links.usedBy.length > 0 && (
+        <span>
+          <span className="muted">Used by</span> {links.usedBy.map(item)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed }: Props) {
   const [composing, setComposing] = useState<Anchor>();
   const [texts, setTexts] = useState<Record<string, FileText>>({});
   // Lines revealed in each gap, from its top and from its bottom.
@@ -201,6 +258,7 @@ export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDel
                 Viewed
               </label>
             </summary>
+            {related?.get(file) && <RelatedRow links={related.get(file)!} />}
             <table>
               <colgroup>
                 <col className="no-col" />
@@ -227,7 +285,7 @@ export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDel
                     </tr>
                   ) : (
                   <Fragment key={seg.hunk.id}>
-                    <tr className="hunk-header">
+                    <tr className="hunk-header" id={`hunk-${seg.hunk.id}`}>
                       <td colSpan={3}>
                         <span className="hid">{seg.hunk.id}</span> {seg.hunk.header}
                       </td>
@@ -256,7 +314,7 @@ export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDel
                             </td>
                             <td className="code">
                               <span className="sign">{l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}</span>
-                              {l.text}
+                              {l.kind === "del" ? l.text : linkSymbols(l.text, symbols?.get(seg.hunk.id))}
                             </td>
                           </tr>
                           {lineNotes.map((n) => (

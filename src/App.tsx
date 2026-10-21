@@ -11,7 +11,7 @@ import { Issues } from "./components/bits";
 export type Route =
   | { page: "plan" }
   | { page: "map"; chunk?: number }
-  | { page: "review"; chunk: number | "skim"; file?: string }
+  | { page: "review"; chunk: number | "skim"; file?: string; hunk?: string }
   | { page: "summary" };
 
 const chunkArg = (arg: string | undefined) => Math.max(0, Number(arg ?? 1) - 1) || 0;
@@ -22,17 +22,26 @@ function parseRoute(hash: string): Route | undefined {
   if (page === "plan") return { page: "plan" };
   if (page === "summary") return { page: "summary" };
   if (page === "map") return { page: "map", chunk: arg ? chunkArg(arg) : undefined };
-  if (page === "review")
+  if (page === "review") {
+    const q = new URLSearchParams(query);
     return {
       page: "review",
       chunk: arg === "skim" ? "skim" : chunkArg(arg),
-      file: new URLSearchParams(query).get("file") ?? undefined,
+      file: q.get("file") ?? undefined,
+      hunk: q.get("hunk") ?? undefined,
     };
+  }
   return undefined;
 }
 
-export const routeHref = (r: Route) =>
-  r.page === "review" ? `#/review/${r.chunk === "skim" ? "skim" : r.chunk + 1}` : `#/${r.page}`;
+export function routeHref(r: Route): string {
+  if (r.page !== "review") return `#/${r.page}`;
+  const q = new URLSearchParams();
+  if (r.file) q.set("file", r.file);
+  if (r.hunk) q.set("hunk", r.hunk);
+  const query = q.toString();
+  return `#/review/${r.chunk === "skim" ? "skim" : r.chunk + 1}${query ? `?${query}` : ""}`;
+}
 
 export type Update = (fn: (s: ReviewState) => ReviewState) => void;
 
@@ -187,6 +196,7 @@ export function App() {
           update={update}
           at={current.chunk}
           file={current.file}
+          hunk={current.hunk}
         />
       )}
     </div>

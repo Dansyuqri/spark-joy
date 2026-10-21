@@ -175,6 +175,29 @@ describe("review app", () => {
     expect(errors).toEqual([]);
   });
 
+  it("links names to where they're defined and lists related files", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    // src/use.ts calls f25, which src/math.ts defines.
+    await page.goto(`${server.url}/#/review/2`);
+    const use = page.locator('details[id="file-src/use.ts"]');
+    await use.locator("summary").waitFor();
+    // Earlier tests may have marked it viewed, which collapses it.
+    await use.evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await expect(use.locator(".related").textContent()).resolves.toMatch(/Uses\s*math\.ts/);
+    const math = page.locator('details[id="file-src/math.ts"]');
+    await math.evaluate((d) => ((d as HTMLDetailsElement).open = false));
+
+    // The link jumps to the defining hunk, opening its file if collapsed.
+    await use.locator("td.code a.symbol", { hasText: "f25" }).first().click();
+    await page.waitForURL((u) => /^#\/review\/2\?file=src%2Fmath\.ts&hunk=/.test(u.hash));
+    const hunk = new URLSearchParams(new URL(page.url()).hash.split("?")[1]).get("hunk")!;
+    await expect.poll(() => math.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(true);
+    await expect.poll(() => page.locator(`[id="hunk-${hunk}"]`).isVisible()).toBe(true);
+    await expect(math.locator(".related").textContent()).resolves.toMatch(/Used by\s*use\.ts/);
+    expect(errors).toEqual([]);
+  });
+
   it("previews a split plan as stacked PRs", async () => {
     const { hunks, paths } = await extract({ cwd: root, base: "main", run: "split" });
     const half = Math.ceil(hunks.length / 2);

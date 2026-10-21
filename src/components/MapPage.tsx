@@ -144,7 +144,7 @@ export function MapPage({ data, plan, view, state, at }: Props) {
 
   const open = (n: GraphNode) => {
     if (drag.current?.moved) return;
-    if (n.kind === "file") location.hash = `${routeHref({ page: "review", chunk: n.chunk! })}?file=${encodeURIComponent(n.file!)}`;
+    if (n.kind === "file") location.hash = routeHref({ page: "review", chunk: n.chunk!, file: n.file });
     else if (n.chunk !== undefined) location.hash = `#/map/${n.chunk + 1}`;
   };
 

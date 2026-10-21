@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   chunkNoteKey,
   hunkStatus,
@@ -7,6 +7,7 @@ import {
   strategyLabel,
   type StrategyView,
 } from "../../shared/derive";
+import { fileLinks, mergeLinks, symbolTargets } from "../../shared/graph";
 import type { Hunk, LineNote, Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
@@ -20,8 +21,9 @@ interface Props {
   state: ReviewState;
   update: Update;
   at: number | "skim";
-  // File to scroll to, when opened from the map.
+  // File, or hunk within it, to scroll to when opened from the map or a link.
   file?: string;
+  hunk?: string;
 }
 
 const go = (at: number | "skim") => {
@@ -29,10 +31,15 @@ const go = (at: number | "skim") => {
   window.scrollTo(0, 0);
 };
 
-export function ReviewPage({ data, plan, view, state, update, at, file }: Props) {
+export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: Props) {
   useEffect(() => {
-    if (file) document.getElementById(`file-${file}`)?.scrollIntoView({ block: "start" });
-  }, [file, at]);
+    const el = (hunk && document.getElementById(`hunk-${hunk}`)) || (file && document.getElementById(`file-${file}`));
+    if (!el) return;
+    // A viewed file starts collapsed; open it so the target can be seen.
+    const details = el.closest("details");
+    if (details && !details.open) details.open = true;
+    el.scrollIntoView({ block: hunk ? "center" : "start" });
+  }, [file, hunk, at]);
 
   const reviewed = new Set(state.reviewed);
   const count = view.chunks.length;
@@ -41,6 +48,9 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
   const current = index === "skim" ? undefined : view.chunks[index];
   const hunks: Hunk[] = index === "skim" ? view.skim : (current?.hunks ?? []);
   const status = hunkStatus(hunks, reviewed);
+  const links = useMemo(() => mergeLinks(data.links, plan.links), [data.links, plan.links]);
+  const related = useMemo(() => fileLinks(hunks, view, links), [hunks, view, links]);
+  const symbols = useMemo(() => symbolTargets(hunks, view, links), [hunks, view, links]);
   const noteKey = current ? chunkNoteKey(view.strategy.id, current.chunk.id) : `${view.strategy.id}/skim`;
 
   const prev = index === "skim" ? count - 1 : index > 0 ? index - 1 : undefined;
@@ -157,6 +167,8 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
           hunks={hunks}
           allHunks={data.hunks}
           chunkOf={chunkOf}
+          related={related}
+          symbols={symbols}
           notes={lineNotes}
           onAdd={addNote}
           onEdit={editNote}
