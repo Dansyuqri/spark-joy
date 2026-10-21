@@ -158,7 +158,8 @@ describe("review app", () => {
     await file.getByRole("checkbox", { name: "Viewed" }).check();
     await expect.poll(() => file.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(false);
     await expect(file.getAttribute("class")).resolves.toContain("viewed");
-    expect((await summary.boundingBox())!.y).toBeGreaterThanOrEqual(53);
+    // The header is brought back from the toggle event, which fires after the collapse.
+    await expect.poll(async () => (await summary.boundingBox())!.y).toBeGreaterThanOrEqual(53);
 
     // It's saved with the review state, so it survives a reload.
     await page.waitForTimeout(500);
