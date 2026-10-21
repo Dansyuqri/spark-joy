@@ -64,8 +64,8 @@ export function App() {
   const [state, setState] = useState<ReviewState>();
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [route, setRoute] = useState<Route | undefined>(() => parseRoute(location.hash));
-  const saveTimer = useRef<number>();
-  const pending = useRef<ReviewState>();
+  const saveTimer = useRef<number>(undefined);
+  const pending = useRef<ReviewState>(undefined);
   const inflight = useRef<Promise<unknown>>(Promise.resolve());
 
   const refresh = useCallback(async () => {
