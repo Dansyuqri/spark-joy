@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type SyntheticEvent } from "react";
 import { fileSegments, numberLines, type FileSegment, type NumberedLine } from "../../shared/derive";
 import type { Hunk, LineNote } from "../../shared/schema";
 import { loadFile } from "../api";
@@ -16,6 +16,9 @@ interface Props {
   onAdd: (n: Omit<LineNote, "id" | "at">) => void;
   onEdit: (id: string, text: string) => void;
   onDelete: (id: string) => void;
+  // Hashes of reviewed hunks; a file is viewed once all its shown hunks are.
+  reviewed: ReadonlySet<string>;
+  onViewed: (hunks: Hunk[], on: boolean) => void;
   collapsed?: boolean;
 }
 
@@ -32,12 +35,23 @@ function matches(lines: string[], hs: Hunk[]): boolean {
   return hs.every((h) => numberLines(h).every((l) => l.newNo === undefined || lines[l.newNo - 1] === l.text));
 }
 
-export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDelete, collapsed }: Props) {
+// Height of the sticky top bar, which file headers stick below.
+const TOP = 53;
+
+// After collapsing a file whose header was stuck, bring its header back into view.
+function keepInView(e: SyntheticEvent<HTMLDetailsElement>) {
+  const el = e.currentTarget;
+  if (!el.open && el.getBoundingClientRect().top < TOP) el.scrollIntoView({ block: "start" });
+}
+
+export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed }: Props) {
   const [composing, setComposing] = useState<Anchor>();
   const [texts, setTexts] = useState<Record<string, FileText>>({});
   // Lines revealed in each gap, from its top and from its bottom.
   const [open, setOpen] = useState<Record<string, { top: number; bottom: number }>>({});
   const [whole, setWhole] = useState<Record<string, boolean>>({});
+  // Files the reviewer opened or closed; the rest start open unless viewed.
+  const [shut, setShut] = useState<Record<string, boolean>>({});
   const shownIds = new Set(hunks.map((h) => h.id));
 
   const load = async (file: string, hs: Hunk[]) => {
@@ -133,8 +147,21 @@ export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDel
         const hasGaps = segments.some((x) => x.kind === "gap");
         const added = hs.reduce((n, h) => n + h.added, 0);
         const removed = hs.reduce((n, h) => n + h.removed, 0);
+        const viewed = hs.every((h) => reviewed.has(h.hash));
+        const key = `${file}-${fi}`;
+        const isOpen = !(shut[key] ?? (collapsed || viewed));
         return (
-          <details key={`${file}-${fi}`} id={`file-${file}`} className="file" open={!collapsed}>
+          <details
+            key={key}
+            id={`file-${file}`}
+            className={viewed ? "file viewed" : "file"}
+            open={isOpen}
+            onToggle={(e) => {
+              const open = e.currentTarget.open;
+              if (open !== isOpen) setShut((o) => ({ ...o, [key]: !open }));
+              keepInView(e);
+            }}
+          >
             <summary>
               <span className="path">{file}</span>
               {first.oldFile && first.oldFile !== file && <span className="muted"> ← {first.oldFile}</span>}
@@ -161,6 +188,18 @@ export function DiffView({ hunks, allHunks, chunkOf, notes, onAdd, onEdit, onDel
                   {whole[file] ? "Diff only" : "View file"}
                 </button>
               )}
+              <label className="viewed-box" title="Mark this file reviewed" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={viewed}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    onViewed(hs, on);
+                    setShut((o) => ({ ...o, [key]: on }));
+                  }}
+                />
+                Viewed
+              </label>
             </summary>
             <table>
               <colgroup>

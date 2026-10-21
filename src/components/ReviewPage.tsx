@@ -83,7 +83,9 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
     }));
   const deleteNote = (id: string) => update((s) => ({ ...s, lineNotes: s.lineNotes.filter((n) => n.id !== id) }));
 
-  const files = new Set(hunks.map((h) => h.file)).size;
+  const fileNames = new Set(hunks.map((h) => h.file));
+  const files = fileNames.size;
+  const viewedFiles = [...fileNames].filter((f) => hunks.every((h) => h.file !== f || reviewed.has(h.hash))).length;
 
   return (
     <div className="review">
@@ -132,7 +134,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
           <div className="muted small">
             {current ? `${index === "skim" ? "" : (index as number) + 1}/${count} · ${current.size} lines · ` : ""}
             {plural(files, "file")}
-            {status === "partial" && <span className="warn"> · changed since review</span>}
+            {status === "partial" && ` · ${viewedFiles}/${files} viewed`}
           </div>
           {current && (
             <p className="intent">
@@ -159,6 +161,8 @@ export function ReviewPage({ data, plan, view, state, update, at, file }: Props)
           onAdd={addNote}
           onEdit={editNote}
           onDelete={deleteNote}
+          reviewed={reviewed}
+          onViewed={(hs, on) => update((s) => setReviewed(s, hs, on))}
           collapsed={index === "skim"}
         />
 

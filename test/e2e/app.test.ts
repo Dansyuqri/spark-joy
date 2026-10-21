@@ -70,6 +70,10 @@ describe("review app", () => {
     await page.reload();
     await page.getByRole("heading", { name: /Core/ }).waitFor();
     await expect(page.locator("#chunk-note").inputValue()).resolves.toBe("Looks fine overall.");
+    // The chunk is done, so its files come back collapsed as viewed.
+    const viewed = page.locator("details.file.viewed").first();
+    await expect(viewed.evaluate((d) => (d as HTMLDetailsElement).open)).resolves.toBe(false);
+    await viewed.locator("summary .path").click();
     await page.locator(".line-note .text", { hasText: "Why this value?" }).waitFor();
     await page.locator(".progress span", { hasText: "1/3" }).waitFor();
 
@@ -120,10 +124,10 @@ describe("review app", () => {
     // Find a chunk with a file that has unchanged lines to expand.
     for (let n = 1; n <= 3; n++) {
       await page.goto(`${server.url}/#/review/${n}`);
-      await page.locator("tr.line").first().waitFor();
-      if (await page.locator(".view-file").count()) break;
+      await page.locator("tr.line").first().waitFor({ state: "attached" });
+      if (await page.locator("details.file:not(.viewed) .view-file").count()) break;
     }
-    const file = page.locator("details.file", { has: page.locator(".view-file") }).first();
+    const file = page.locator("details.file:not(.viewed)", { has: page.locator(".view-file") }).first();
     await file.locator("tr.gap-row button", { hasText: "Show all" }).first().click();
     await file.locator("tr.line.expanded").first().waitFor();
 
@@ -132,6 +136,42 @@ describe("review app", () => {
     await file.locator(".view-file", { hasText: "Diff only" }).waitFor();
     await expect.poll(() => file.locator("tr.gap-row").count()).toBe(0);
     await page.screenshot({ path: process.env.SHOT ?? "/dev/null", fullPage: false }).catch(() => {});
+    expect(errors).toEqual([]);
+  });
+
+  it("marks files viewed, collapsing them, and keeps headers in view while scrolling", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.setViewportSize({ width: 1200, height: 300 });
+    await page.goto(`${server.url}/#/review/2`);
+    await page.locator("details.file:not(.viewed) tr.line").first().waitFor();
+    // Pin the locator to this file by id, since its class changes once viewed.
+    const id = await page.locator("details.file:not(.viewed)").first().getAttribute("id");
+    const file = page.locator(`details[id="${id}"]`);
+
+    // Scrolled into the file, its header stays pinned below the top bar.
+    const summary = file.locator("summary");
+    await page.evaluate(() => window.scrollBy(0, 150));
+    await expect.poll(async () => Math.round((await summary.boundingBox())!.y)).toBe(53);
+
+    // Ticking Viewed from the pinned header collapses the file and keeps it in sight.
+    await file.getByRole("checkbox", { name: "Viewed" }).check();
+    await expect.poll(() => file.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(false);
+    await expect(file.getAttribute("class")).resolves.toContain("viewed");
+    expect((await summary.boundingBox())!.y).toBeGreaterThanOrEqual(53);
+
+    // It's saved with the review state, so it survives a reload.
+    await page.waitForTimeout(500);
+    await page.reload();
+    const again = page.locator(`details[id="${id}"]`);
+    await again.locator("summary").waitFor();
+    await expect(again.getByRole("checkbox", { name: "Viewed" }).isChecked()).resolves.toBe(true);
+    await expect(again.evaluate((d) => (d as HTMLDetailsElement).open)).resolves.toBe(false);
+
+    // Unticking reopens it.
+    await again.getByRole("checkbox", { name: "Viewed" }).uncheck();
+    await expect.poll(() => again.evaluate((d) => (d as HTMLDetailsElement).open)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
     expect(errors).toEqual([]);
   });
 
