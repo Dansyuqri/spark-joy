@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { strategyView } from "../shared/derive";
-import { chunkGraph, fileGraph, mergeLinks } from "../shared/graph";
+import { chunkGraph, fileGraph, fileLinks, mergeLinks, symbolTargets } from "../shared/graph";
 import { Plan, type Hunk } from "../shared/schema";
 
 const hunk = (id: string, file: string, size = 10): Hunk => ({
@@ -123,5 +123,36 @@ describe("chunkGraph reduction", () => {
       { from: "h4", to: "h1", symbols: ["y"] },
     ]);
     expect(g.edges.map((e) => `${e.from}>${e.to}`).sort()).toEqual(["c0>c1", "c1>c0", "c1>c2"]);
+  });
+});
+
+describe("fileLinks", () => {
+  it("lists the files each shown file uses and is used by, one entry per file", () => {
+    const parse = view.chunks[1]!;
+    const related = fileLinks(parse.hunks, view, links);
+    expect([...related.keys()]).toEqual(["parse.ts"]);
+    expect(related.get("parse.ts")).toEqual({
+      uses: [{ file: "schema.ts", hunk: "h1", chunk: 0, symbols: ["Hunk", "Meta"], labels: [] }],
+      usedBy: [{ file: "app.ts", hunk: "h4", chunk: 2, symbols: ["RawHunk", "parseDiff", "splitHunk"], labels: ["calls"] }],
+    });
+  });
+
+  it("points at skim for hunks outside every chunk", () => {
+    const skimmed = { ...view, skim: [hunk("h6", "gen.ts")] };
+    const related = fileLinks(view.chunks[0]!.hunks, skimmed, [{ from: "h6", to: "h1", symbols: ["Hunk"] }]);
+    expect(related.get("schema.ts")?.usedBy).toEqual([{ file: "gen.ts", hunk: "h6", chunk: "skim", symbols: ["Hunk"], labels: [] }]);
+  });
+});
+
+describe("symbolTargets", () => {
+  it("maps each name a shown hunk uses to the hunk that defines it", () => {
+    const targets = symbolTargets(view.chunks[2]!.hunks, view, links);
+    expect(Object.fromEntries(targets.get("h4")!)).toEqual({
+      parseDiff: { file: "parse.ts", hunk: "h2", chunk: 1 },
+      RawHunk: { file: "parse.ts", hunk: "h3", chunk: 1 },
+      splitHunk: { file: "parse.ts", hunk: "h3", chunk: 1 },
+    });
+    expect(targets.get("h5")?.get("App")).toEqual({ file: "app.ts", hunk: "h4", chunk: 2 });
+    expect(targets.has("h2")).toBe(false);
   });
 });

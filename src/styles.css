@@ -774,3 +774,31 @@ tr.line.expanded td.no {
   margin: 0;
   cursor: pointer;
 }
+
+/* Links to other files */
+.related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.related a {
+  margin-left: 6px;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+.related .where {
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+}
+td.code a.symbol {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+td.code a.symbol:hover {
+  color: var(--accent);
+  text-decoration-style: solid;
+}
