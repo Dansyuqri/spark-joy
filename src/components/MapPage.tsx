@@ -96,7 +96,7 @@ export function MapPage({ data, plan, view, state, at }: Props) {
   // Pan and zoom, reset to fit whenever the level changes.
   const box = useRef<HTMLDivElement>(null);
   const [t, setT] = useState({ x: 0, y: 0, k: 1 });
-  const drag = useRef<{ x: number; y: number; moved: boolean }>();
+  const drag = useRef<{ x: number; y: number; moved: boolean }>(undefined);
   useEffect(() => {
     const el = box.current;
     if (!el) return;

@@ -166,7 +166,7 @@ export const ReviewState = z.object({
   // than by id so that progress carries over when the diff is re-extracted.
   reviewed: z.array(z.string()).default([]),
   // Keyed by "<strategyId>/<chunkId>".
-  chunkNotes: z.record(z.string()).default({}),
+  chunkNotes: z.record(z.string(), z.string()).default({}),
   lineNotes: z.array(LineNote).default([]),
   updatedAt: z.string().optional(),
 });
