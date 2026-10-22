@@ -33,7 +33,7 @@ jobs:
           exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Fetch tags so npm version refuses a version that's already tagged.
+          # Fetch tags so a version that's already tagged is spotted.
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -63,17 +63,26 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Fails here if the tag exists, i.e. the last version PR hasn't been merged yet.
-          tag="$(npm version "$BUMP" -m "Release %s")"
-          # Also stop if npm already has this version, e.g. after the tag was deleted.
           name="$(node -p "require('./package.json').name")"
+          tag="$(npm version "$BUMP" --no-git-tag-version)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if [ -n "$(npm view "$name@${tag#v}" version 2>/dev/null || true)" ]; then
             echo "$name@${tag#v} is already on npm. Merge its version PR into main, then run this again."
             exit 1
           fi
-          # Atomic, so a rejected branch push doesn't leave the tag behind.
-          git push --atomic origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            # An earlier run tagged this version but never published it: publish that tag.
+            echo "$tag exists but isn't on npm, so this run publishes it."
+            git checkout -q -f "$tag"
+            if ! git ls-remote --exit-code --heads origin "release/$tag" > /dev/null; then
+              git push origin "HEAD:refs/heads/release/$tag"
+            fi
+          else
+            git commit -am "Release ${tag#v}"
+            git tag -a "$tag" -m "Release ${tag#v}"
+            # Atomic, so a rejected branch push doesn't leave the tag behind.
+            git push --atomic origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
+          fi
       - run: npm publish
       - name: Open PR to bring the version bump to main
         if: github.event_name == 'workflow_dispatch'
@@ -81,6 +90,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.bump.outputs.tag }}
         run: |
+          if [ -n "$(gh pr list --head "release/$TAG" --state open --json number --jq '.[]')" ]; then
+            echo "The version PR for $TAG is already open."
+            exit 0
+          fi
           gh pr create --base main --head "release/$TAG" \
             --title "Release ${TAG#v}" \
             --body "Bumps package.json to ${TAG#v}, which was tagged $TAG and published to npm."
