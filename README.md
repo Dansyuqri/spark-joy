@@ -95,7 +95,7 @@ On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark
 | `spark-joy validate [--json]` | Check `plan.json` against the hunks |
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |
-| `spark-joy comments [--gitlab] [--stdout]` | Write `comments.json`: your notes as a pending GitHub review or GitLab draft notes |
+| `spark-joy comments [--gitlab] [--stdout]` | Write `comments.json`: your notes as a pending GitHub review or GitLab draft notes; one file per PR for a stack |
 | `spark-joy split [--check cmd] [--apply]` | Turn a split plan into stacked local branches |
 | `spark-joy install-skill [--agent a] [--project] [--print]` | Install the agent skill |
 
@@ -138,7 +138,7 @@ spark-joy serve --run pr-12-stack
 - The plan is written for you from each PR's title and description, with a link to the PR. Your agent can add risk and review focus; they're kept when you import the stack again after new pushes.
 - Big PRs can be broken up too: the agent adds *Foundations first* and *By feature* orders that split each PR into chunks, PR by PR, listed under the PR they come from. Pick one on the Plan page or stay with *Whole PRs*; progress carries over between them. **Across PRs** still shows one panel per PR in every order.
 - It talks to the forge through `gh` or `glab`, so it uses their login and stores no tokens. The forge comes from the remote's host; pass `--forge github|gitlab` for a self-hosted one whose name doesn't say, and `--remote` if the PRs aren't on `origin`.
-- Posting your notes back with `comments` doesn't support stacks yet; `export` works.
+- Asking your agent to post your notes sends each one to the PR it was left on: `comments` writes one `comments-<n>.json` per PR with notes, each a pending review (or draft notes) on that PR's head, with line notes on that PR's own diff lines. A chunk note goes to its PR; a chunk that spans PRs goes to the highest one and names the others. If a PR doesn't target the one below it (`--prs` warned), its line notes go in its review body instead of inline.
 
 ## Develop
 

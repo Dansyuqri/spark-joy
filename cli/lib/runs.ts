@@ -36,6 +36,9 @@ export function runPaths(root: string, name: string): RunPaths {
   };
 }
 
+// Stack runs: the notes for one PR or MR in the stack.
+export const stackCommentsPath = (p: RunPaths, n: number) => join(p.dir, `comments-${n}.json`);
+
 export async function ensureRunsDir(root: string): Promise<void> {
   const dir = join(root, RUNS_DIR);
   await mkdir(dir, { recursive: true });

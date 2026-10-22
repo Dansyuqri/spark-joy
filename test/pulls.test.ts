@@ -1,11 +1,14 @@
-import { rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { notesInHunks } from "../shared/derive";
 import { validatePlan } from "../shared/validate";
+import { main } from "../cli/index";
+import { stackDraftNotes, stackReviews } from "../cli/lib/comments";
 import { extractStack } from "../cli/lib/extract";
 import { parseJsonStream, parsePrArg, parseRemote, walkStack, type ForgePR, type Remote } from "../cli/lib/forge";
-import { readPlanRaw, writeJson } from "../cli/lib/runs";
+import { readPlanRaw, stackCommentsPath, writeJson } from "../cli/lib/runs";
+import { emptyState, type Plan } from "../shared/schema";
 import { serve } from "../cli/lib/server";
 import { stackRepo as makeStack } from "./fixture";
 
@@ -175,5 +178,66 @@ describe("extractStack", () => {
     const note = { id: "n", file: "src/app.ts", side: "new" as const, line: 6, text: "?", at: "", pr: 2 };
     expect(notesInHunks(r.hunks.filter((h) => h.pr === 1), [note])).toEqual([]);
     expect(notesInHunks(r.hunks.filter((h) => h.pr === 2), [note])).toEqual([note]);
+  });
+
+  it("posts each note to the PR it was left on, on that PR's diff lines", async () => {
+    const { root, forge } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    const plan = validatePlan(await readPlanRaw(r.paths), r.hunks).plan!;
+    const [p1, p2, p3] = r.meta.stack!.prs;
+    // An order whose chunk spans PRs 1 and 2, as across-PR orders allow.
+    const across: Plan = { ...plan, strategies: [...plan.strategies, { id: "x", chunks: [{ id: "both", title: "Both", intent: "i", kind: "core", hunks: r.hunks.filter((h) => h.pr !== 3).map((h) => h.id), dependsOn: [], reviewFocus: [], risk: "low" }] }] };
+    const state = emptyState();
+    state.chunkNotes["stack/pr-3"] = "Docs ok?";
+    state.chunkNotes["x/both"] = "Line 6 again";
+    state.lineNotes.push(
+      { id: "a", file: "src/app.ts", side: "new", line: 6, pr: 1, text: "Why a?", at: "" },
+      { id: "b", file: "src/app.ts", side: "new", line: 6, pr: 2, text: "Why b?", at: "" },
+      { id: "c", file: "src/app.ts", side: "old", line: 6, pr: 2, text: "Was a", at: "" },
+      { id: "d", file: "src/app.ts", side: "new", line: 18, pr: 2, text: "Far away", at: "" },
+    );
+
+    const reviews = stackReviews(r.meta, r.hunks, across, state);
+    expect(reviews.map((x) => [x.pr.number, x.review.commit_id])).toEqual([
+      [1, p1!.headSha],
+      [2, p2!.headSha],
+      [3, p3!.headSha],
+    ]);
+    expect(reviews[0]!.review).toEqual({ commit_id: p1!.headSha, body: "", comments: [{ path: "src/app.ts", line: 6, side: "RIGHT", body: "Why a?" }] });
+    expect(reviews[1]!.review.comments).toEqual([
+      { path: "src/app.ts", line: 6, side: "RIGHT", body: "Why b?" },
+      { path: "src/app.ts", line: 6, side: "LEFT", body: "Was a" },
+    ]);
+    expect(reviews[1]!.review.body).toBe("**Both (PR #1, PR #2)**\n\nLine 6 again\n\n- `src/app.ts:18` Far away");
+    expect(reviews[2]!.review).toMatchObject({ body: "**PR 3**\n\nDocs ok?", comments: [] });
+
+    // GitLab: each MR's position starts from the MR below.
+    const drafts = stackDraftNotes(r.meta, r.hunks, across, state);
+    expect(drafts[1]!.notes[1]!.position).toMatchObject({ base_sha: p2!.mergeBase, start_sha: p1!.headSha, head_sha: p2!.headSha, new_line: 6 });
+    expect(drafts[0]!.notes[0]!.position).toMatchObject({ start_sha: r.meta.baseSha, head_sha: p1!.headSha });
+  });
+
+  it("keeps notes out of the diff of a PR that doesn't target the one below", async () => {
+    const { root, forge } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", prs: [1, 3] });
+    const plan = validatePlan(await readPlanRaw(r.paths), r.hunks).plan!;
+    const state = emptyState();
+    state.lineNotes.push({ id: "a", file: "src/util.ts", side: "new", line: 1, pr: 3, text: "Hm", at: "" });
+    expect(stackReviews(r.meta, r.hunks, plan, state)).toEqual([
+      { pr: expect.objectContaining({ number: 3 }), review: { commit_id: r.meta.headSha, body: "- `src/util.ts:1` Hm", comments: [] } },
+    ]);
+  });
+
+  it("writes one comments file per PR with notes", async () => {
+    const { root, forge } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    await writeJson(r.paths.dir + "/comments-9.json", {});
+    const state = emptyState();
+    state.lineNotes.push({ id: "b", file: "src/app.ts", side: "new", line: 6, pr: 2, text: "Why b?", at: "" });
+    await writeJson(r.paths.state, state);
+    expect(await main(["comments", "--run", r.paths.name], root)).toBe(0);
+    expect(JSON.parse(readFileSync(stackCommentsPath(r.paths, 2), "utf8")).comments).toHaveLength(1);
+    expect([1, 3, 9].map((n) => existsSync(stackCommentsPath(r.paths, n)))).toEqual([false, false, false]);
+    await expect(main(["comments", "--run", r.paths.name, "--gitlab"], root)).rejects.toThrow(/on GitHub/);
   });
 });
