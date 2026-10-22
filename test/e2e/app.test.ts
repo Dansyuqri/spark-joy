@@ -295,7 +295,7 @@ describe("review app", () => {
     try {
       await page.goto(`${s.url}/#/plan`);
       await page.locator(".stats", { hasText: "3 PRs" }).waitFor();
-      await expect(page.locator(".hint").count()).resolves.toBe(0);
+      await expect(page.locator(".hint").textContent()).resolves.toContain("break up the pr-1-stack run");
       await page.getByRole("button", { name: "Start" }).click();
 
       const head = page.locator(".chunk-head");
@@ -352,6 +352,7 @@ describe("review app", () => {
       await layers.locator(".stats", { hasText: "4 chunks in 3 PRs" }).waitFor();
       await expect(layers.locator(".pr-group").allTextContents()).resolves.toEqual(["#1 PR 1", "#2 PR 2", "#3 PR 3"]);
       await page.getByRole("heading", { name: "By feature" }).waitFor();
+      await expect(page.locator(".hint").count()).resolves.toBe(0);
       await page.screenshot({ path: process.env.SHOT_STACK_PLAN ?? "/dev/null", fullPage: true }).catch(() => {});
       await layers.getByRole("button", { name: "Start" }).click();
 

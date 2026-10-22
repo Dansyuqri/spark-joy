@@ -85,6 +85,12 @@ export function PlanPage({ data, plan, state, update }: Props) {
               >
                 {isOn ? "Continue" : "Start"}
               </button>
+              {plan.mode === "stack" && plan.strategies.length === 1 && (
+                <p className="hint">
+                  To break the {unit}s into chunks, ask your agent to <q>break up the {data.meta.run} run</q>. The new orders show up
+                  here when you come back to this tab.
+                </p>
+              )}
               {plan.mode === "split" && (
                 <p className="hint">
                   Create the branches: <code>spark-joy split --apply</code>
