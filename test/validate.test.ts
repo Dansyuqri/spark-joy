@@ -222,8 +222,14 @@ describe("stack mode", () => {
   });
 
   it("accepts PRs broken into chunks, in stack order", () => {
-    const r = validatePlan(stack([chunk("a", ["h001"]), chunk("b", ["h002"]), chunk("c", ["h003", "h004"])]), prHunks);
-    expect(r.issues).toEqual([]);
+    const layers = [chunk("a", ["h001"]), chunk("b", ["h002"]), chunk("c", ["h003", "h004"])];
+    const r = validatePlan(stack(layers), prHunks);
+    expect(r.issues.map((i) => i.message)).toEqual([
+      "only one order besides whole PRs; the reviewer is meant to choose between a foundations-first and a by-feature order",
+    ]);
+    const both = stack(layers);
+    both.strategies = [...both.strategies, { id: "features", chunks: [chunk("x", ["h001", "h002"]), chunk("y", ["h003", "h004"])] }];
+    expect(validatePlan(both, prHunks).issues).toEqual([]);
     expect(validatePlan({ mode: "stack", strategies: [whole] }, prHunks).issues).toEqual([]);
   });
 

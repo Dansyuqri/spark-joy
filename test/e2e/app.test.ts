@@ -338,6 +338,10 @@ describe("review app", () => {
       id: "layers",
       chunks: [chunk("app", "Mark line five", ids(1)), chunk("util", "Util constant", ids(2, "src/util.ts")), chunk("rewrite", "Rewrite line five", ids(2, "src/app.ts")), chunk("readme", "Readme", ids(3))],
     });
+    raw.strategies.push({
+      id: "features",
+      chunks: [chunk("five", "Line five", ids(1)), chunk("five2", "Line five again", ids(2, "src/app.ts")), chunk("util2", "Util constant", ids(2, "src/util.ts")), chunk("readme2", "Readme", ids(3))],
+    });
     raw.features = [{ title: "Line five", description: "Marks then rewrites it", hunks: [...ids(1), ...ids(2, "src/app.ts")] }];
     await writeJson(paths.plan, raw);
     const s = await serve({ paths, appDir, port: 0 });
@@ -347,6 +351,7 @@ describe("review app", () => {
       const layers = page.locator(".strategy", { has: page.getByRole("heading", { name: "Foundations first" }) });
       await layers.locator(".stats", { hasText: "4 chunks in 3 PRs" }).waitFor();
       await expect(layers.locator(".pr-group").allTextContents()).resolves.toEqual(["#1 PR 1", "#2 PR 2", "#3 PR 3"]);
+      await page.getByRole("heading", { name: "By feature" }).waitFor();
       await page.screenshot({ path: process.env.SHOT_STACK_PLAN ?? "/dev/null", fullPage: true }).catch(() => {});
       await layers.getByRole("button", { name: "Start" }).click();
 

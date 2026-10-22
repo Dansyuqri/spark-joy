@@ -100,6 +100,8 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
   } else if (stack) {
     if (plan.strategies[0]!.id !== "stack")
       error("strategies", 'stack mode starts with the "stack" strategy, one chunk per PR, as `spark-joy stack` writes it');
+    else if (plan.strategies.length === 2)
+      warn("strategies", "only one order besides whole PRs; the reviewer is meant to choose between a foundations-first and a by-feature order");
   } else if (plan.strategies.length < 2)
     warn("strategies", "only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order");
   if (split && plan.skim.length) error("skim", `${plan.mode} mode has no skim; put every hunk in a ${stack ? "chunk" : "PR"}`);
