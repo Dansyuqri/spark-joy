@@ -42,7 +42,8 @@ jobs:
           cache: npm
       # Trusted publishing needs npm 11.5 or newer.
       - run: npm install -g npm@11
-      - run: npm ci
+      # Skip the audit and funding requests: the audit call has been hanging until npm times it out after 5 minutes.
+      - run: npm ci --no-audit --no-fund
       - name: Tag matches package.json version
         if: github.event_name == 'push'
         run: |
@@ -70,7 +71,8 @@ jobs:
             echo "$name@${tag#v} is already on npm. Merge its version PR into main, then run this again."
             exit 1
           fi
-          git push origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
+          # Atomic, so a rejected branch push doesn't leave the tag behind.
+          git push --atomic origin "refs/tags/$tag" "HEAD:refs/heads/release/$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - run: npm publish
       - name: Open PR to bring the version bump to main
