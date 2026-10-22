@@ -13,6 +13,15 @@ export function PrLink({ meta, chunk }: { meta: Meta; chunk: Chunk }) {
   );
 }
 
+// Stack mode: heads the chunks a PR was broken into, in lists of chunks.
+export function PrHeading({ meta, chunk }: { meta: Meta; chunk: Chunk }) {
+  return (
+    <li className="pr-group">
+      <PrLink meta={meta} chunk={chunk} /> <span className="title">{chunk.title}</span>
+    </li>
+  );
+}
+
 export function StatusIcon({ status }: { status: ChunkStatus }) {
   const label = { done: "Reviewed", partial: "Partly reviewed, or changed since review", todo: "Not reviewed" }[status];
   return (

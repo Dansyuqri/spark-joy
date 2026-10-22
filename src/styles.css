@@ -941,3 +941,28 @@ td.code a.symbol:hover {
 .carousel .panel.on {
   border-color: var(--accent);
 }
+
+/* Stack mode: the PR a run of chunks comes from. */
+.chunk-list li.pr-group,
+.sidebar li.pr-group {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin-top: 8px;
+  padding: 2px 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sidebar li.pr-group {
+  padding-left: 8px;
+}
+.chunk-list li.pr-group:first-child,
+.sidebar li.pr-group:first-child {
+  margin-top: 0;
+}
+.pr-group .title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

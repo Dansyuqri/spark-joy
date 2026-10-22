@@ -87,7 +87,7 @@ On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark
 | --- | --- |
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
 | `spark-joy extract --staged \| --uncommitted` | Diff `HEAD` against the index or the working tree, for splitting |
-| `spark-joy stack <pr> \| --prs a,b,c` | Load existing stacked PRs or MRs into a run, one chunk per PR |
+| `spark-joy stack <pr> \| --prs a,b,c` | Load existing stacked PRs or MRs into a run, one chunk per PR (the agent can break big ones up) |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
 | `spark-joy links` | Cross-file links: which hunk uses a name another defines |
@@ -136,6 +136,7 @@ spark-joy serve --run pr-12-stack
 - It finds the rest of the stack by following base branches down and open PRs based on each head up. If two PRs build on the same one, it follows the lower number and says so; use `--prs` to pick.
 - Each PR is fetched (`refs/pull/N/head` or `refs/merge-requests/N/head`, kept under `refs/spark-joy/`) and diffed against the PR below it, so you see only what that PR changes, even where it rewrites lines from an earlier PR.
 - The plan is written for you from each PR's title and description, with a link to the PR. Your agent can add risk and review focus; they're kept when you import the stack again after new pushes.
+- Big PRs can be broken up too: the agent adds *Foundations first* and *By feature* orders that split each PR into chunks, PR by PR, listed under the PR they come from. Pick one on the Plan page or stay with *Whole PRs*; progress carries over between them. **Across PRs** still shows one panel per PR in every order.
 - It talks to the forge through `gh` or `glab`, so it uses their login and stores no tokens. The forge comes from the remote's host; pass `--forge github|gitlab` for a self-hosted one whose name doesn't say, and `--remote` if the PRs aren't on `origin`.
 - Posting your notes back with `comments` doesn't support stacks yet; `export` works.
 

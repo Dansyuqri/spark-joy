@@ -213,7 +213,15 @@ spark-joy stack <n or URL>          # any PR in the stack; spark-joy finds the r
 spark-joy stack --prs 12,13,14      # exactly these, bottom first
 ```
 
-It fetches each PR's head, diffs it against the PR below it, and writes the plan itself: one chunk per PR, titled and described by the PR. Pass on any `warn` lines (a fork in the stack, a merged PR). Then `spark-joy serve --run <run>` in the background as in step 6; there's nothing to plan. You may add `risk`, `riskReason` and `reviewFocus` to its chunks after agreeing risk as in step 3; they survive a re-import. `comments` doesn't support stacks yet; offer `spark-joy export`.
+It fetches each PR's head, diffs it against the PR below it, and writes the plan itself: the `stack` strategy, one chunk per PR, titled and described by the PR. Pass on any `warn` lines (a fork in the stack, a merged PR). You may add `risk`, `riskReason` and `reviewFocus` to its chunks after agreeing risk as in step 3.
+
+**Break up big PRs.** If any PR is over 300 changed lines, or the user asks, add `layers` and `features` strategies after `stack`, as in step 4, plus `features`. Read with `outline` and `show` (`--run <run>`). Rules on top of step 4:
+- Each chunk holds hunks of one PR only: each PR is diffed against the one below, so line numbers differ between PRs.
+- Chunks go PR by PR, bottom first; a PR's chunks stay together. A PR of 300 lines or less is one chunk.
+- No `skim`: put mechanical hunks in a `mechanical` chunk of their PR.
+- Leave the `stack` strategy as written. Features may span PRs.
+
+Validate, then `spark-joy serve --run <run>` in the background as in step 6. Re-importing keeps your additions while the PRs are unchanged; if it warns they changed, plan `layers` and `features` again. `comments` doesn't support stacks yet; offer `spark-joy export`.
 
 ## After new commits
 

@@ -7,7 +7,7 @@ import { splitHunk } from "./split";
 import { computeLinks } from "./symbols";
 import { headRef, prName, walkStack, type Forge, type ForgePR } from "./forge";
 import * as g from "./git";
-import { ensureRunsDir, readPlanRaw, runPaths, slug, writeJson, type RunPaths } from "./runs";
+import { ensureRunsDir, readHunks, readPlanRaw, runPaths, slug, writeJson, type RunPaths } from "./runs";
 
 const hashOf = (...parts: string[]) => createHash("sha1").update(parts.join("\0")).digest("hex").slice(0, 16);
 
@@ -165,7 +165,9 @@ function offsetIds(hunks: Hunk[], offset: number): Hunk[] {
 
 // One chunk per PR, in stack order, described by the PR's own title and
 // body. Notes an agent added to a chunk (risk, review focus) survive a re-import.
-export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly ForgePR[], previous?: Plan): Plan {
+// So do the orders it broke the PRs up in, while `unchanged` says the hunks
+// they name are still the same.
+export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly ForgePR[], previous?: Plan, unchanged = false): Plan {
   const forge = meta.stack?.forge ?? "github";
   const old = new Map((previous?.strategies[0]?.chunks ?? []).map((c) => [c.id, c]));
   const chunks = prs.map((p) => {
@@ -185,13 +187,15 @@ export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly Forg
       pr: { number: p.number, url: p.url },
     };
   });
+  const keep = unchanged ? previous : undefined;
   return {
     mode: "stack",
     title: chunks.length === 1 ? chunks[0]!.title : `${chunks.length} stacked ${forge === "gitlab" ? "MRs" : "PRs"}`,
-    strategies: [{ id: "stack", chunks }],
-    features: [],
+    ...(keep?.overview ? { overview: keep.overview } : {}),
+    strategies: [{ id: "stack", chunks }, ...(keep?.strategies.slice(1) ?? [])],
+    features: keep?.features ?? [],
     skim: [],
-    links: [],
+    links: keep?.links ?? [],
   };
 }
 
@@ -272,10 +276,15 @@ export async function extractStack(o: StackOptions): Promise<StackResult> {
   await ensureRunsDir(root);
   const paths = runPaths(root, runName);
   await mkdir(paths.dir, { recursive: true });
-  const previous = Plan.safeParse((await readPlanRaw(paths)) ?? null);
+  const parsed = Plan.safeParse((await readPlanRaw(paths)) ?? null);
+  const previous = parsed.success && parsed.data.mode === "stack" ? parsed.data : undefined;
+  const before = await readHunks(paths).catch(() => undefined);
+  const unchanged = !!before && before.length === hunks.length && before.every((h, i) => h.id === hunks[i]!.id && h.hash === hunks[i]!.hash);
+  if (previous && previous.strategies.length > 1 && !unchanged)
+    warnings.push("the PRs changed since they were broken into chunks; plan those orders again");
   await writeJson(paths.hunks, hunks);
   await writeJson(paths.meta, meta);
   await writeJson(paths.links, computeLinks(hunks));
-  await writeJson(paths.plan, stackPlan(meta, hunks, prs, previous.success && previous.data.mode === "stack" ? previous.data : undefined));
+  await writeJson(paths.plan, stackPlan(meta, hunks, prs, previous, unchanged));
   return { paths, meta, hunks, untracked: [], prs, warnings };
 }

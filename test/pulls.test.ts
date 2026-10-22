@@ -128,6 +128,30 @@ describe("extractStack", () => {
     expect([chunk.risk, chunk.riskReason, chunk.reviewFocus]).toEqual(["high", "Rewrites line 5", ["Still right?"]]);
   });
 
+  it("keeps the orders an agent broke the PRs into while the PRs are unchanged", async () => {
+    const { root, forge } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    const raw = (await readPlanRaw(r.paths)) as { strategies: { id: string; chunks: { hunks: string[] }[] }[]; features: unknown[] };
+    const layers = { id: "layers", chunks: raw.strategies[0]!.chunks.map((c, i) => ({ id: `c${i}`, title: "Part", intent: "Does it", hunks: c.hunks })) };
+    raw.strategies.push(layers);
+    raw.features = [{ title: "All", description: "Everything", hunks: r.hunks.map((h) => h.id) }];
+    await writeJson(r.paths.plan, raw);
+
+    const again = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    expect(again.warnings.filter((w) => /changed/.test(w))).toEqual([]);
+    const plan = validatePlan(await readPlanRaw(again.paths), again.hunks);
+    expect(plan.issues.filter((i) => i.level === "error")).toEqual([]);
+    expect(plan.plan!.strategies.map((s) => s.id)).toEqual(["stack", "layers"]);
+    expect(plan.plan!.features).toHaveLength(1);
+
+    // Once the hunks differ, the agent's orders are dropped and must be planned again.
+    await writeJson(again.paths.hunks, again.hunks.map((h, i) => (i === 0 ? { ...h, hash: "old" } : h)));
+    const changed = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    expect(changed.warnings).toContain("the PRs changed since they were broken into chunks; plan those orders again");
+    const dropped = validatePlan(await readPlanRaw(changed.paths), changed.hunks).plan!;
+    expect([dropped.strategies.map((s) => s.id), dropped.features]).toEqual([["stack"], []]);
+  });
+
   it("takes an explicit list and warns when it isn't a chain", async () => {
     const { root, forge } = stackRepo();
     const r = await extractStack({ cwd: root, forge, remote: "origin", prs: [1, 3] });
