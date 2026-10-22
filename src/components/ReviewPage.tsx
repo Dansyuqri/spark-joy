@@ -1,6 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import {
   chunkNoteKey,
+  groupedByPr,
+  prChunk,
+  prRef,
   hunkStatus,
   notesInHunks,
   setReviewed,
@@ -13,7 +16,7 @@ import type { Hunk, LineNote, Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
 import { DiffView } from "./DiffView";
-import { Kind, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
+import { Kind, PrHeading, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -98,6 +101,11 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
     }));
   const deleteNote = (id: string) => update((s) => ({ ...s, lineNotes: s.lineNotes.filter((n) => n.id !== id) }));
 
+  // Stack mode, when the PRs are broken into chunks: the PR this chunk is from.
+  const grouped = groupedByPr(plan, view.strategy);
+  const prOf = (i: number) => (grouped ? view.chunks[i]?.chunk.pr?.number : undefined);
+  const pr = current ? prChunk(plan, prOf(index as number)) : undefined;
+
   const fileNames = new Set(hunks.map((h) => h.file));
   const files = fileNames.size;
   const viewedFiles = [...fileNames].filter((f) => hunks.every((h) => h.file !== f || reviewed.has(h.hash))).length;
@@ -108,15 +116,18 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
         <div className="muted small">{strategyLabel(view.strategy)}</div>
         <ol>
           {view.chunks.map((c, i) => (
-            <li key={c.chunk.id} className={i === index ? "on" : ""}>
-              <a href={routeHref({ page: "review", chunk: i })}>
-                <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
-                <span className="n">{i + 1}</span>
-                <span className="title">{c.chunk.title}</span>
-                <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
-                <span className="size">{c.size}</span>
-              </a>
-            </li>
+            <Fragment key={c.chunk.id}>
+              {prOf(i) !== undefined && prOf(i) !== prOf(i - 1) && <PrHeading meta={data.meta} chunk={prChunk(plan, prOf(i))!} />}
+              <li className={i === index ? "on" : ""}>
+                <a href={routeHref({ page: "review", chunk: i })}>
+                  <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
+                  <span className="n">{i + 1}</span>
+                  <span className="title">{c.chunk.title}</span>
+                  <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
+                  <span className="size">{c.size}</span>
+                </a>
+              </li>
+            </Fragment>
           ))}
           {hasSkim && (
             <li className={index === "skim" ? "on skim" : "skim"}>
@@ -152,7 +163,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
             {plural(files, "file")}
             {status === "partial" && ` · ${viewedFiles}/${files} viewed`}
           </div>
-          {current && plan.mode === "stack" ? (
+          {current && plan.mode === "stack" && !grouped ? (
             // The PR's own description, which can run long.
             <details className="description" open={current.chunk.intent.length <= 400}>
               <summary>Description</summary>
@@ -166,6 +177,17 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
                 <Text>{current.chunk.intent}</Text>
               </p>
             )
+          )}
+          {pr && (
+            // The PR this chunk is from, and its own description.
+            <details className="description">
+              <summary>
+                {unitName(plan, data.meta)} {prRef(data.meta, pr.pr!.number)}: {pr.title}
+              </summary>
+              <p className="intent">
+                <Text>{pr.intent}</Text>
+              </p>
+            </details>
           )}
           {current && current.chunk.reviewFocus.length > 0 && (
             <ul className="focus">

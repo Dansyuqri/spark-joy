@@ -91,16 +91,20 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     }
   }
 
-  // Both put every hunk in exactly one PR.
+  // Both put every hunk in a chunk, lockfiles included.
   const split = plan.mode === "split" || plan.mode === "stack";
-  // Stack chunks are existing PRs, titled and described by their authors.
   const stack = plan.mode === "stack";
-  if (split) {
-    if (plan.strategies.length !== 1 || plan.strategies[0]!.id !== plan.mode)
-      error("strategies", `${plan.mode} mode takes exactly one strategy, with id "${plan.mode}"`);
-    if (plan.skim.length) error("skim", `${plan.mode} mode has no skim; put every hunk in a PR`);
+  if (plan.mode === "split") {
+    if (plan.strategies.length !== 1 || plan.strategies[0]!.id !== "split")
+      error("strategies", 'split mode takes exactly one strategy, with id "split"');
+  } else if (stack) {
+    if (plan.strategies[0]!.id !== "stack")
+      error("strategies", 'stack mode starts with the "stack" strategy, one chunk per PR, as `spark-joy stack` writes it');
   } else if (plan.strategies.length < 2)
     warn("strategies", "only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order");
+  if (split && plan.skim.length) error("skim", `${plan.mode} mode has no skim; put every hunk in a ${stack ? "chunk" : "PR"}`);
+  // Stack mode: where each PR sits in the stack, bottom first.
+  const prOrder = new Map((stack ? plan.strategies[0]!.chunks : []).flatMap((c, i) => (c.pr ? [[c.pr.number, i] as const] : [])));
 
   const strategyIds = new Set<string>();
   for (const s of plan.strategies) {
@@ -111,6 +115,10 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     const seen = new Map<string, string>();
     const chunkIndex = new Map<string, number>();
     const branches = new Set<string>();
+    // Stack mode: "stack" chunks are the PRs themselves, titled and described
+    // by their authors; other strategies break each PR into chunks.
+    const whole = stack && s.id === "stack";
+    let lastPr = -1;
     s.chunks.forEach((c, i) => {
       const cw = `${where} / chunk ${c.id}`;
       if (c.branch !== undefined) {
@@ -120,8 +128,8 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
       }
       if (chunkIndex.has(c.id)) error(cw, "duplicate chunk id");
       chunkIndex.set(c.id, i);
-      if (c.hunks.length === 0 && !stack) error(cw, "chunk has no hunks");
-      if (!stack) {
+      if (c.hunks.length === 0 && !whole) error(cw, "chunk has no hunks");
+      if (!whole) {
         tooLong(cw, "title", c.title, BUDGET.chunkTitle);
         tooLong(cw, "intent", c.intent, BUDGET.intent);
       }
@@ -141,13 +149,23 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
           continue;
         }
         if (seen.has(id)) error(cw, `hunk ${id} is already in chunk ${seen.get(id)}`);
-        else if (stack && h.pr !== c.pr?.number) error(cw, `hunk ${id} is from another PR`);
+        else if (whole && h.pr !== c.pr?.number) error(cw, `hunk ${id} is from another PR`);
         else if (skim.has(id)) error(cw, `hunk ${id} is also in skim`);
         seen.set(id, c.id);
         hs.push(h);
       }
+      if (stack && !whole) {
+        const prs = [...new Set(hs.map((h) => h.pr))];
+        if (prs.length > 1) error(cw, `chunk mixes PRs ${prs.join(", ")}; keep each chunk within one PR`);
+        else if (prs[0] !== undefined && c.pr && c.pr.number !== prs[0]) error(cw, `pr is ${c.pr.number}, but its hunks are from ${prs[0]}`);
+        const at = prs.length === 1 && prs[0] !== undefined ? prOrder.get(prs[0]) : undefined;
+        if (at !== undefined) {
+          if (at < lastPr) error(cw, `chunk of PR ${prs[0]} comes after a later PR's chunk; keep each PR's chunks together, bottom PR first`);
+          lastPr = at;
+        }
+      }
       const size = changedLines(hs);
-      if (size > budget && !stack) warn(cw, `${size} changed lines exceeds the ${budget}-line budget; consider splitting`);
+      if (size > budget && !whole) warn(cw, `${size} changed lines exceeds the ${budget}-line budget; consider splitting`);
 
       for (const dep of c.dependsOn) {
         const at = chunkIndex.get(dep);
@@ -172,7 +190,7 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     tooLong(lw, "label", l.label, BUDGET.linkLabel);
   });
 
-  if (plan.features.length === 0 && !split) warn("features", "no features; the summary page will be empty");
+  if (plan.features.length === 0 && (!split || (stack && plan.strategies.length > 1))) warn("features", "no features; the summary page will be empty");
   const inFeature = new Set<string>();
   plan.features.forEach((f, i) => {
     const fw = `feature ${i + 1} (${f.title})`;

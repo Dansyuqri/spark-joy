@@ -20,7 +20,7 @@ export const defaultPrefix = (branch: string) => (branch === "HEAD" ? "split" : 
 
 export const branchName = (prefix: string, n: number, c: Chunk) => c.branch ?? `${prefix}/${n}-${branchSlug(c.title)}`;
 
-const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs", stack: "Stacked PRs" };
+const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs", stack: "Whole PRs" };
 export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ?? s.id;
 
 // What a chunk is called: "MR" for a GitLab stack, "PR" for any other stack or
@@ -30,6 +30,14 @@ export const unitName = (plan: Plan, meta: Meta): string =>
 
 // "#12" on GitHub, "!12" on GitLab.
 export const prRef = (meta: Meta, n: number): string => `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`;
+
+// Stack mode: the PR's own chunk, by PR number.
+export const prChunk = (plan: Plan, n: number | undefined): Chunk | undefined =>
+  plan.mode === "stack" && n !== undefined ? plan.strategies[0]!.chunks.find((c) => c.pr?.number === n) : undefined;
+
+// Stack mode: whether a strategy breaks the PRs into chunks, so its chunks are
+// listed under the PR they come from.
+export const groupedByPr = (plan: Plan, s: Strategy): boolean => plan.mode === "stack" && s.id !== "stack";
 
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;
 
@@ -52,15 +60,23 @@ export function strategyView(plan: Plan, hunks: readonly Hunk[], strategyId: str
   if (!strategy) return undefined;
   const byId = new Map(hunks.map((h) => [h.id, h]));
   const placed = new Set<string>();
-  const chunks = strategy.chunks.map((chunk, index) => {
-    const hs = chunk.hunks.map((id) => byId.get(id)).filter((h): h is Hunk => !!h);
+  // Stack mode: chunks that break up a PR link to that PR, like the PR's own chunk.
+  const chunks = strategy.chunks.map((c, index) => {
+    const hs = c.hunks.map((id) => byId.get(id)).filter((h): h is Hunk => !!h);
     hs.forEach((h) => placed.add(h.id));
+    const pr = c.pr ?? prChunk(plan, hs[0]?.pr)?.pr;
+    const chunk = pr && !c.pr ? { ...c, pr } : c;
     return { chunk, index, hunks: hs, size: changedLines(hs) };
   });
   const skimIds = new Set(plan.skim);
   const skim = hunks.filter((h) => !placed.has(h.id) && (skimIds.has(h.id) || isIgnorable(h)));
   return { strategy, chunks, skim };
 }
+
+// Stack mode: the one-chunk-per-PR view, which the Across PRs page always
+// follows. Undefined for other modes.
+export const stackView = (plan: Plan, hunks: readonly Hunk[]): StrategyView | undefined =>
+  plan.mode === "stack" ? strategyView(plan, hunks, "stack") : undefined;
 
 export function hunkStatus(hs: readonly Hunk[], reviewed: ReadonlySet<string>): ChunkStatus {
   if (hs.length === 0) return "done";
@@ -181,8 +197,19 @@ export interface FileStep {
   hunks: Hunk[];
 }
 
-export function fileSteps(view: StrategyView, file: string): FileStep[] {
+// In a stack, `prs` is the one-chunk-per-PR view: there is one step per PR,
+// whichever order the reader picked, and `at` is the first chunk of the
+// reader's order that holds the PR's changes to the file (or else any of it).
+export function fileSteps(view: StrategyView, file: string, prs?: StrategyView): FileStep[] {
   const own = (hs: readonly Hunk[]) => hs.filter((h) => h.file === file).sort((a, b) => a.newStart - b.newStart);
+  if (prs) {
+    return prs.chunks.map((p) => {
+      const hunks = own(p.hunks);
+      const ids = new Set((hunks.length ? hunks : p.hunks).map((h) => h.id));
+      const c = view.chunks.find((c) => c.hunks.some((h) => ids.has(h.id)));
+      return { at: c?.index ?? p.index, chunk: p.chunk, hunks };
+    });
+  }
   const steps: FileStep[] = view.chunks.map((c) => ({ at: c.index, chunk: c.chunk, hunks: own(c.hunks) }));
   const skim = own(view.skim);
   if (skim.length) steps.push({ at: "skim", hunks: skim });

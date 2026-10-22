@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { extract, extractStack } from "../../cli/lib/extract";
-import { readState, runPaths, writeJson } from "../../cli/lib/runs";
+import { readPlanRaw, readState, runPaths, writeJson } from "../../cli/lib/runs";
 import { serve } from "../../cli/lib/server";
 import { makeRepo, planFor, stackRepo } from "../fixture";
 
@@ -319,6 +319,52 @@ describe("review app", () => {
       await expect(pr2.locator("tr.line.add").textContent()).resolves.toContain("rewritten by b");
       await expect(page.getByRole("region", { name: "PR #3" }).textContent()).resolves.toContain("No changes in this PR");
       await page.screenshot({ path: process.env.SHOT_STACK_ACROSS ?? "/dev/null" }).catch(() => {});
+    } finally {
+      await s.close();
+      rmSync(repo.dir, { recursive: true, force: true });
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("breaks stacked PRs into chunks, PR by PR, and keeps one Across PRs panel per PR", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const repo = stackRepo();
+    const { paths, hunks } = await extractStack({ cwd: repo.root, forge: repo.forge, remote: "origin", start: 1 });
+    const raw = (await readPlanRaw(paths)) as { strategies: unknown[]; features: unknown[] };
+    const ids = (pr: number, file?: string) => hunks.filter((h) => h.pr === pr && (!file || h.file === file)).map((h) => h.id);
+    const chunk = (id: string, title: string, hs: string[]) => ({ id, title, intent: "Does it", hunks: hs });
+    raw.strategies.push({
+      id: "layers",
+      chunks: [chunk("app", "Mark line five", ids(1)), chunk("util", "Util constant", ids(2, "src/util.ts")), chunk("rewrite", "Rewrite line five", ids(2, "src/app.ts")), chunk("readme", "Readme", ids(3))],
+    });
+    raw.features = [{ title: "Line five", description: "Marks then rewrites it", hunks: [...ids(1), ...ids(2, "src/app.ts")] }];
+    await writeJson(paths.plan, raw);
+    const s = await serve({ paths, appDir, port: 0 });
+    try {
+      await page.goto(`${s.url}/#/plan`);
+      await page.getByRole("heading", { name: "Whole PRs" }).waitFor();
+      const layers = page.locator(".strategy", { has: page.getByRole("heading", { name: "Foundations first" }) });
+      await layers.locator(".stats", { hasText: "4 chunks in 3 PRs" }).waitFor();
+      await expect(layers.locator(".pr-group").allTextContents()).resolves.toEqual(["#1 PR 1", "#2 PR 2", "#3 PR 3"]);
+      await page.screenshot({ path: process.env.SHOT_STACK_PLAN ?? "/dev/null", fullPage: true }).catch(() => {});
+      await layers.getByRole("button", { name: "Start" }).click();
+
+      await page.goto(`${s.url}/#/review/3`);
+      const head = page.locator(".chunk-head");
+      await page.getByRole("heading", { name: /Rewrite line five/ }).waitFor();
+      await expect(head.getByRole("link", { name: "#2" }).getAttribute("href")).resolves.toBe("https://github.com/o/r/pull/2");
+      await expect(head.locator(".description summary").textContent()).resolves.toBe("PR #2: PR 2");
+      await expect(page.locator(".sidebar .pr-group").count()).resolves.toBe(3);
+      await page.screenshot({ path: process.env.SHOT_STACK_CHUNK ?? "/dev/null" }).catch(() => {});
+
+      await page.locator('details[id="file-src/app.ts"]').getByRole("link", { name: "Across PRs" }).click();
+      await expect.poll(() => page.locator(".carousel .panel").count()).toBe(3);
+      const pr2 = page.getByRole("region", { name: "PR #2" });
+      await expect(pr2.locator("tr.line.add").textContent()).resolves.toContain("rewritten by b");
+      await expect(pr2.getByRole("link", { name: "Open in review" }).getAttribute("href")).resolves.toBe("#/review/3?file=src%2Fapp.ts");
+      await expect(page.locator(".steps .step.on").textContent()).resolves.toBe("2");
+      await page.screenshot({ path: process.env.SHOT_STACK_LAYERS_ACROSS ?? "/dev/null" }).catch(() => {});
     } finally {
       await s.close();
       rmSync(repo.dir, { recursive: true, force: true });

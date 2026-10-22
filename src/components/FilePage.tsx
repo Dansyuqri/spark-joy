@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { branchName, defaultPrefix, fileSteps, hunkStatus, numberLines, prRef, unitName, viewFiles, type FileStep, type StrategyView } from "../../shared/derive";
+import { branchName, defaultPrefix, fileSteps, hunkStatus, numberLines, prRef, stackView, unitName, viewFiles, type FileStep, type StrategyView } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref } from "../App";
@@ -21,11 +21,17 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
   const split = plan.mode !== "review";
   const unit = unitName(plan, data.meta);
   const files = useMemo(() => viewFiles(view), [view]);
-  const steps = useMemo(() => fileSteps(view, path), [view, path]);
+  // In a stack there is one step per PR, however the PRs were broken up.
+  const prs = useMemo(() => stackView(plan, data.hunks), [plan, data.hunks]);
+  const steps = useMemo(() => fileSteps(view, path, prs), [view, path, prs]);
   const reviewed = new Set(state.reviewed);
   const prefix = defaultPrefix(data.meta.branch);
   const touched = steps.filter((s) => s.hunks.length > 0);
-  const start = Math.max(0, steps.findIndex((s) => s.at === (at ?? touched[0]?.at)));
+  const fromPr = prs && typeof at === "number" ? view.chunks[at]?.chunk.pr?.number : undefined;
+  const start = Math.max(
+    0,
+    fromPr !== undefined ? steps.findIndex((s) => s.chunk?.pr?.number === fromPr) : steps.findIndex((s) => s.at === (at ?? touched[0]?.at)),
+  );
 
   const track = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(start);
@@ -119,13 +125,13 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
         </button>
         {steps.map((s, i) => (
           <button
-            key={String(s.at)}
+            key={s.chunk?.id ?? String(s.at)}
             className={`step${s.hunks.length ? " touched" : ""}${i === focus ? " on" : ""}`}
             aria-current={i === focus || undefined}
             title={`${name(s)}${s.chunk ? `: ${s.chunk.title}` : ""}${s.hunks.length ? "" : " (no changes)"}`}
             onClick={() => show(i)}
           >
-            {s.at === "skim" ? "~" : s.at + 1}
+            {s.at === "skim" ? "~" : prs ? i + 1 : s.at + 1}
           </button>
         ))}
         <button aria-label="Next" disabled={focus >= steps.length - 1} onClick={() => show(focus + 1)}>
@@ -144,7 +150,7 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
           const added = s.hunks.reduce((n, h) => n + h.added, 0);
           const removed = s.hunks.reduce((n, h) => n + h.removed, 0);
           return (
-            <section key={String(s.at)} className={`file panel${s.hunks.length ? "" : " unchanged"}${i === focus ? " on" : ""}`} aria-label={name(s)}>
+            <section key={s.chunk?.id ?? String(s.at)} className={`file panel${s.hunks.length ? "" : " unchanged"}${i === focus ? " on" : ""}`} aria-label={name(s)}>
               <header>
                 <div className="panel-title">
                   {s.hunks.length > 0 && <StatusIcon status={hunkStatus(s.hunks, reviewed)} />}

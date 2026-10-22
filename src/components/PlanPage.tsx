@@ -1,8 +1,9 @@
-import { branchName, defaultPrefix, hunkStatus, strategyLabel, strategyView, unitName } from "../../shared/derive";
+import { Fragment } from "react";
+import { branchName, defaultPrefix, groupedByPr, hunkStatus, prChunk, strategyLabel, strategyView, unitName } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
-import { Issues, Kind, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
+import { Issues, Kind, PrHeading, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -45,27 +46,35 @@ export function PlanPage({ data, plan, state, update }: Props) {
           const view = strategyView(plan, data.hunks, s.id)!;
           const largest = Math.max(0, ...view.chunks.map((c) => c.size));
           const isOn = state.strategy === s.id;
+          const grouped = groupedByPr(plan, s);
           return (
             <section key={s.id} className={`strategy ${isOn ? "on" : ""}`}>
               <h3>{strategyLabel(s)}</h3>
               <p className="stats">
-                {plural(s.chunks.length, unit)} · max {largest} lines
+                {grouped ? `${plural(s.chunks.length, "chunk")} in ${plural(plan.strategies[0]!.chunks.length, unit)}` : plural(s.chunks.length, unit)}
+                {` · max ${largest} lines`}
               </p>
               <ol className="chunk-list">
-                {view.chunks.map((c) => (
-                  <li key={c.chunk.id}>
-                    <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
-                    <span className="n">{c.index + 1}</span>
-                    <span className="title">
-                      {c.chunk.title}
-                      <PrLink meta={data.meta} chunk={c.chunk} />
-                      {split && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
-                    </span>
-                    <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
-                    <Kind kind={c.chunk.kind} />
-                    <span className="size">{c.size}</span>
-                  </li>
-                ))}
+                {view.chunks.map((c, i) => {
+                  const pr = grouped && c.chunk.pr?.number !== view.chunks[i - 1]?.chunk.pr?.number ? prChunk(plan, c.chunk.pr?.number) : undefined;
+                  return (
+                    <Fragment key={c.chunk.id}>
+                      {pr && <PrHeading meta={data.meta} chunk={pr} />}
+                      <li>
+                        <StatusIcon status={hunkStatus(c.hunks, reviewed)} />
+                        <span className="n">{c.index + 1}</span>
+                        <span className="title">
+                          {c.chunk.title}
+                          {!grouped && <PrLink meta={data.meta} chunk={c.chunk} />}
+                          {split && !grouped && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
+                        </span>
+                        <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
+                        <Kind kind={c.chunk.kind} />
+                        <span className="size">{c.size}</span>
+                      </li>
+                    </Fragment>
+                  );
+                })}
               </ol>
               <button
                 className={isOn ? "primary" : ""}

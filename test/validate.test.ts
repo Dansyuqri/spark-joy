@@ -210,6 +210,46 @@ describe("split mode", () => {
   });
 });
 
+describe("stack mode", () => {
+  const prHunks = [{ ...hunk("h001"), pr: 1 }, { ...hunk("h002"), pr: 1 }, { ...hunk("h003"), pr: 2 }, { ...hunk("h004", 5, ["lockfile"]), pr: 2 }];
+  const pr = (n: number, hs: string[]) => ({ ...chunk(`pr-${n}`, hs), title: "A PR title that runs well past five words", pr: { number: n, url: `u${n}` } });
+  const whole = { id: "stack", chunks: [pr(1, ["h001", "h002"]), pr(2, ["h003", "h004"])] };
+  const stack = (chunks: ReturnType<typeof chunk>[], over: Record<string, unknown> = {}) => ({
+    mode: "stack",
+    strategies: [whole, { id: "layers", chunks }],
+    features: [{ title: "F", description: "d", hunks: ["h001", "h002", "h003"] }],
+    ...over,
+  });
+
+  it("accepts PRs broken into chunks, in stack order", () => {
+    const r = validatePlan(stack([chunk("a", ["h001"]), chunk("b", ["h002"]), chunk("c", ["h003", "h004"])]), prHunks);
+    expect(r.issues).toEqual([]);
+    expect(validatePlan({ mode: "stack", strategies: [whole] }, prHunks).issues).toEqual([]);
+  });
+
+  it("keeps each chunk within one PR, and each PR's chunks together", () => {
+    expect(errors(validatePlan(stack([chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004"])]), prHunks))).toEqual([
+      "chunk mixes PRs 1, 2; keep each chunk within one PR",
+      "chunk mixes PRs 1, 2; keep each chunk within one PR",
+    ]);
+    expect(errors(validatePlan(stack([chunk("a", ["h001"]), chunk("c", ["h003", "h004"]), chunk("b", ["h002"])]), prHunks))).toEqual([
+      "chunk of PR 1 comes after a later PR's chunk; keep each PR's chunks together, bottom PR first",
+    ]);
+  });
+
+  it("needs the whole-PR strategy first, every hunk placed, and no skim", () => {
+    expect(errors(validatePlan(stack([chunk("a", ["h001", "h002"]), chunk("c", ["h003"])]), prHunks))).toEqual([
+      expect.stringMatching(/hunks not in any PR: h004/),
+    ]);
+    expect(errors(validatePlan(stack([chunk("a", ["h001", "h002"]), chunk("c", ["h003"])], { skim: ["h004"] }), prHunks))).toContain(
+      "stack mode has no skim; put every hunk in a chunk",
+    );
+    expect(errors(validatePlan({ mode: "stack", strategies: [{ id: "layers", chunks: [chunk("a", ["h001", "h002", "h003", "h004"])] }] }, prHunks))).toContain(
+      'stack mode starts with the "stack" strategy, one chunk per PR, as `spark-joy stack` writes it',
+    );
+  });
+});
+
 describe("risk reasons", () => {
   const risky = (over: Record<string, unknown>) =>
     plan({
