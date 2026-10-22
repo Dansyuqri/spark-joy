@@ -2,7 +2,9 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { notesInHunks } from "../shared/derive";
+import { emptyState } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
+import { exportMarkdown } from "../cli/lib/export";
 import { extractStack } from "../cli/lib/extract";
 import { parseJsonStream, parsePrArg, parseRemote, walkStack, type ForgePR, type Remote } from "../cli/lib/forge";
 import { readPlanRaw, writeJson } from "../cli/lib/runs";
@@ -175,5 +177,9 @@ describe("extractStack", () => {
     const note = { id: "n", file: "src/app.ts", side: "new" as const, line: 6, text: "?", at: "", pr: 2 };
     expect(notesInHunks(r.hunks.filter((h) => h.pr === 1), [note])).toEqual([]);
     expect(notesInHunks(r.hunks.filter((h) => h.pr === 2), [note])).toEqual([note]);
+
+    // The exported review says which PR the note is on.
+    const plan = validatePlan(await readPlanRaw(r.paths), r.hunks).plan!;
+    expect(exportMarkdown(r.meta, r.hunks, plan, { ...emptyState(), lineNotes: [note] })).toContain("  - #2 `src/app.ts:6` ?");
   });
 });

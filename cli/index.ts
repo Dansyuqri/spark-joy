@@ -12,7 +12,7 @@ import { cliForge, parsePrArg, parseRemote, prName, type ForgeKind } from "./lib
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
-import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
+import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, type RunPaths } from "./lib/runs";
 import { formatRubric, readRubric } from "./lib/rubric";
 import { serve } from "./lib/server";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
@@ -34,6 +34,8 @@ Commands:
       --prs <a,b,c>     Exactly these PRs, bottom first, instead of finding the stack
       --remote <name>   Remote the PRs are on (default origin)
       --forge <name>    github or gitlab, when the remote's host doesn't say
+      --serve           Open the review app right after (--port too); your agent can break up
+                        the PRs while it runs
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
       --file <path>     Print every hunk of a file
@@ -64,6 +66,16 @@ Common options:
   -v, --version         Print the installed version
   -h, --help            Show this help
 `;
+
+// Serve the review app until Ctrl+C. It reloads the plan when its tab regains
+// focus, so an agent can keep rewriting the plan meanwhile.
+async function serveRun(p: RunPaths, port: string | undefined) {
+  const s = await serve({ paths: p, appDir: join(PKG_ROOT, "dist", "app"), port: port ? Number(port) : 4848 });
+  console.log(`spark-joy reviewing ${p.name} at ${s.url}  (Ctrl+C to stop)`);
+  await new Promise<void>((resolve) => process.once("SIGINT", resolve));
+  await s.close();
+  return 0;
+}
 
 async function run(cwd: string, name: string | undefined) {
   const root = await g.repoRoot(cwd);
@@ -96,6 +108,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       prs: { type: "string" },
       remote: { type: "string" },
       forge: { type: "string" },
+      serve: { type: "boolean" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
     },
@@ -156,6 +169,8 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         console.log(`${String(i + 1).padStart(2)}  ${prName(remote.forge, p.number)}  ${p.head} → ${p.base}  ${lines} lines  ${p.title}`);
       });
       console.log(`wrote ${relative(cwd, r.paths.dir)}, with a plan of one chunk per ${remote.forge === "gitlab" ? "MR" : "PR"}`);
+      console.log(`to break the PRs into chunks, ask your agent: "break up the ${r.paths.name} run"`);
+      if (values.serve) return serveRun(r.paths, values.port);
       console.log(`review it: spark-joy serve --run ${r.paths.name}`);
       return 0;
     }
@@ -207,13 +222,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
     }
 
     case "serve": {
-      const p = await run(cwd, values.run);
-      const port = values.port ? Number(values.port) : 4848;
-      const s = await serve({ paths: p, appDir: join(PKG_ROOT, "dist", "app"), port });
-      console.log(`spark-joy reviewing ${p.name} at ${s.url}  (Ctrl+C to stop)`);
-      await new Promise<void>((resolve) => process.once("SIGINT", resolve));
-      await s.close();
-      return 0;
+      return serveRun(await run(cwd, values.run), values.port);
     }
 
     case "export": {

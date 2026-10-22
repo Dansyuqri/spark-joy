@@ -3,7 +3,7 @@ import { branchName, defaultPrefix, groupedByPr, hunkStatus, prChunk, strategyLa
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
-import { Issues, Kind, PrHeading, PrLink, Risk, StatusIcon, Text, plural } from "./bits";
+import { Issues, Kind, PrHeading, PrLink, PrLinks, Risk, StatusIcon, Text, plural } from "./bits";
 
 interface Props {
   data: RunData;
@@ -51,7 +51,9 @@ export function PlanPage({ data, plan, state, update }: Props) {
             <section key={s.id} className={`strategy ${isOn ? "on" : ""}`}>
               <h3>{strategyLabel(s)}</h3>
               <p className="stats">
-                {grouped ? `${plural(s.chunks.length, "chunk")} in ${plural(plan.strategies[0]!.chunks.length, unit)}` : plural(s.chunks.length, unit)}
+                {plan.mode === "stack" && s.id !== "stack"
+                  ? `${plural(s.chunks.length, "chunk")} ${grouped ? "in" : "across"} ${plural(plan.strategies[0]!.chunks.length, unit)}`
+                  : plural(s.chunks.length, unit)}
                 {` · max ${largest} lines`}
               </p>
               <ol className="chunk-list">
@@ -65,8 +67,8 @@ export function PlanPage({ data, plan, state, update }: Props) {
                         <span className="n">{c.index + 1}</span>
                         <span className="title">
                           {c.chunk.title}
-                          {!grouped && <PrLink meta={data.meta} chunk={c.chunk} />}
-                          {split && !grouped && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
+                          {!grouped && (c.chunk.pr ? <PrLink meta={data.meta} chunk={c.chunk} /> : <PrLinks meta={data.meta} plan={plan} hunks={c.hunks} />)}
+                          {split && (plan.mode === "split" || s.id === "stack") && <code className="branch">{branchName(prefix, c.index + 1, c.chunk)}</code>}
                         </span>
                         <Risk risk={c.chunk.risk} reason={c.chunk.riskReason} compact />
                         <Kind kind={c.chunk.kind} />
@@ -85,6 +87,12 @@ export function PlanPage({ data, plan, state, update }: Props) {
               >
                 {isOn ? "Continue" : "Start"}
               </button>
+              {plan.mode === "stack" && plan.strategies.length === 1 && (
+                <p className="hint">
+                  To break the {unit}s into chunks, ask your agent to <q>break up the {data.meta.run} run</q>. The new orders show up
+                  here when you come back to this tab.
+                </p>
+              )}
               {plan.mode === "split" && (
                 <p className="hint">
                   Create the branches: <code>spark-joy split --apply</code>
