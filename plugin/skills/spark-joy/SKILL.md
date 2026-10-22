@@ -163,7 +163,9 @@ It writes `.spark-joy/<run>/comments.json` from the notes saved in the app: line
    done
    ```
 
-Never submit, publish or approve the review. Reply with the PR/MR link, the comment count, and that it stays pending until they submit it.
+**Stacks.** On a run from `spark-joy stack`, `comments` writes one `comments-<n>.json` per PR or MR that has notes, and prints each one's number and head commit (the forge comes from the run, so `--gitlab` isn't needed). Do the steps above once per file, against that PR or MR: check its head, then post that file to that PR's `reviews` or that MR's `draft_notes`. Never post one PR's file to another.
+
+Never submit, publish or approve the review. Reply with each PR/MR link, its comment count, and that it stays pending until they submit it.
 
 On other hosts, offer `spark-joy export` for the user to paste.
 
@@ -221,7 +223,7 @@ It fetches each PR's head, diffs it against the PR below it, and writes the plan
 - No `skim`: put mechanical hunks in a `mechanical` chunk of their PR.
 - Leave the `stack` strategy as written. Features may span PRs.
 
-Validate, then `spark-joy serve --run <run>` in the background as in step 6. Re-importing keeps your additions while the PRs are unchanged; if it warns they changed, plan `layers` and `features` again. `comments` doesn't support stacks yet; offer `spark-joy export`.
+Validate, then `spark-joy serve --run <run>` in the background as in step 6. Re-importing keeps your additions while the PRs are unchanged; if it warns they changed, plan `layers` and `features` again. To post the reviewer's notes, see [step 7](#7-post-the-reviewers-notes-only-when-asked).
 
 ## After new commits
 

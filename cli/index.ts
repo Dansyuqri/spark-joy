@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,13 +6,13 @@ import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
 import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
-import { gitlabDraftNotes, reviewPayload } from "./lib/comments";
+import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews } from "./lib/comments";
 import { extract, extractStack } from "./lib/extract";
 import { cliForge, parsePrArg, parseRemote, prName, type ForgeKind } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
-import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun } from "./lib/runs";
+import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath } from "./lib/runs";
 import { formatRubric, readRubric } from "./lib/rubric";
 import { serve } from "./lib/server";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
@@ -45,7 +45,8 @@ Commands:
       --port <n>        Port to listen on (default 4848)
   export                Write review.md with progress, notes and the feature summary
       --stdout          Print instead of writing the file
-  comments              Write comments.json: your notes as a pending GitHub review, word for word
+  comments              Write comments.json: your notes as a pending GitHub review, word for word.
+                        For a stack, one comments-<n>.json per PR or MR with notes
       --gitlab          As GitLab draft notes instead, one request body per note
       --stdout          Print instead of writing the file
   split                 Dry run of a split plan: build the stacked PRs and check they add up
@@ -238,8 +239,39 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const result = raw === undefined ? undefined : validatePlan(raw, hunks);
       if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
       const meta = await readMeta(p);
-      if (meta.source === "stack") throw new Error("posting notes to stacked PRs isn't supported yet; use `spark-joy export` for review.md");
       const state = await readState(p);
+      if (meta.source === "stack") {
+        const forge = meta.stack!.forge;
+        if (values.gitlab && forge !== "gitlab") throw new Error("this stack is on GitHub; drop --gitlab");
+        const perPr =
+          forge === "gitlab"
+            ? stackDraftNotes(meta, hunks, result.plan, state).map(({ pr, notes }) => ({
+                pr,
+                body: notes,
+                inline: notes.filter((n) => n.position).length,
+                general: notes.some((n) => !n.position),
+              }))
+            : stackReviews(meta, hunks, result.plan, state).map(({ pr, review }) => ({
+                pr,
+                body: review,
+                inline: review.comments.length,
+                general: !!review.body,
+              }));
+        if (!perPr.length) throw new Error("no notes yet; leave notes in the review app first");
+        if (values.stdout) {
+          process.stdout.write(JSON.stringify(perPr.map(({ pr, body }) => ({ number: pr.number, url: pr.url, [forge === "gitlab" ? "notes" : "review"]: body })), null, 2) + "\n");
+          return 0;
+        }
+        // Files from an earlier run may name PRs that have no notes now.
+        for (const f of await readdir(p.dir)) if (/^comments-\d+\.json$/.test(f)) await rm(join(p.dir, f));
+        for (const { pr, body, inline, general } of perPr) {
+          const file = stackCommentsPath(p, pr.number);
+          await writeFile(file, JSON.stringify(body, null, 2) + "\n");
+          const what = `${inline} inline comment(s)${general ? `, plus notes in the ${forge === "gitlab" ? "first draft note" : "review body"}` : ""}`;
+          console.log(`${prName(forge, pr.number)}  ${what} on ${pr.headSha.slice(0, 7)}  wrote ${relative(cwd, file)}`);
+        }
+        return 0;
+      }
       const review = values.gitlab ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
       const inline = Array.isArray(review) ? review.filter((n) => n.position).length : review.comments.length;
       const general = Array.isArray(review) ? review.length > inline : !!review.body;
