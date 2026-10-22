@@ -27,12 +27,19 @@ interface Props {
   collapsed?: boolean;
   // What a chunk is called ("PR" in split mode), for the link to the file across chunks.
   unit?: string;
+  // Stack mode: names a PR, e.g. "#12", for files of a chunk that spans PRs.
+  prLabel?: (n: number) => string;
 }
 
-type Anchor = { file: string; side: "old" | "new"; line: number };
-const anchorOf = (file: string, l: NumberedLine): Anchor | undefined =>
-  l.kind === "del" ? { file, side: "old", line: l.oldNo! } : l.newNo !== undefined ? { file, side: "new", line: l.newNo } : undefined;
-const same = (a: Anchor, n: Anchor) => a.file === n.file && a.side === n.side && a.line === n.line;
+// In a stack, `pr` says which PR's version of the file the line is in.
+type Anchor = { file: string; side: "old" | "new"; line: number; pr?: number };
+const anchorOf = (file: string, l: NumberedLine, pr: number | undefined): Anchor | undefined => {
+  const at = l.kind === "del" ? { side: "old" as const, line: l.oldNo! } : l.newNo !== undefined ? { side: "new" as const, line: l.newNo } : undefined;
+  return at && { file, ...at, ...(pr !== undefined ? { pr } : {}) };
+};
+const same = (a: Anchor, n: Anchor) => a.file === n.file && a.side === n.side && a.line === n.line && a.pr === n.pr;
+// Each PR of a stack has its own version of a file, so file state is kept per PR.
+const fileKey = (file: string, hs: Hunk[]) => (hs[0]?.pr !== undefined ? `${hs[0].pr}:${file}` : file);
 
 type FileText = string[] | "loading" | "stale" | "error";
 type Gap = Extract<FileSegment, { kind: "gap" }>;
@@ -103,7 +110,7 @@ function RelatedRow({ links }: { links: FileLinks }) {
   );
 }
 
-export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed, unit = "chunk" }: Props) {
+export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, onAdd, onEdit, onDelete, reviewed, onViewed, collapsed, unit = "chunk", prLabel }: Props) {
   const [composing, setComposing] = useState<Anchor>();
   const [texts, setTexts] = useState<Record<string, FileText>>({});
   // Lines revealed in each gap, from its top and from its bottom.
@@ -114,13 +121,14 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
   const shownIds = new Set(hunks.map((h) => h.id));
 
   const load = async (file: string, hs: Hunk[]) => {
-    if (texts[file]) return;
-    setTexts((t) => ({ ...t, [file]: "loading" }));
+    const k = fileKey(file, hs);
+    if (texts[k]) return;
+    setTexts((t) => ({ ...t, [k]: "loading" }));
     const text: FileText = await loadFile(file, hs[0]?.pr).then(
       ({ lines }) => (matches(lines, hs) ? lines : "stale"),
       () => "error",
     );
-    setTexts((t) => ({ ...t, [file]: text }));
+    setTexts((t) => ({ ...t, [k]: text }));
   };
   const reveal = (file: string, hs: Hunk[], key: string, top: number, bottom: number) => {
     void load(file, hs);
@@ -142,13 +150,14 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
   );
 
   const gapRows = (file: string, hs: Hunk[], g: Gap, first: boolean) => {
-    const text = texts[file];
+    const fk = fileKey(file, hs);
+    const text = texts[fk];
     const lines = Array.isArray(text) ? text : undefined;
     const to = g.to ?? lines?.length;
     if (to !== undefined && to < g.from) return null;
-    const key = `${file}:${g.from}`;
+    const key = `${fk}:${g.from}`;
     const size = to === undefined ? undefined : to - g.from + 1;
-    const all = whole[file] && size !== undefined;
+    const all = whole[fk] && size !== undefined;
     const want = open[key] ?? { top: 0, bottom: 0 };
     const top = all ? size : Math.min(want.top, size ?? want.top);
     const bottom = all ? 0 : Math.min(want.bottom, size === undefined ? 0 : size - top);
@@ -193,9 +202,12 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
   const files: { file: string; hunks: Hunk[] }[] = [];
   for (const h of hunks) {
     const last = files[files.length - 1];
-    if (last?.file === h.file) last.hunks.push(h);
+    if (last?.file === h.file && last.hunks[0]!.pr === h.pr) last.hunks.push(h);
     else files.push({ file: h.file, hunks: [h] });
   }
+
+  // A chunk across a stack's PRs shows a file once per PR, each tagged with its PR.
+  const mixed = new Set(hunks.map((h) => h.pr)).size > 1;
 
   return (
     <div className="diff">
@@ -223,6 +235,7 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
             }}
           >
             <summary>
+              {prLabel && mixed && first.pr !== undefined && <span className="badge pr">{prLabel(first.pr)}</span>}
               <span className="path">{file}</span>
               {first.oldFile && first.oldFile !== file && <span className="muted"> ← {first.oldFile}</span>}
               <span className={`badge st-${first.status}`}>{first.status}</span>
@@ -242,15 +255,15 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
                   onClick={(e) => {
                     e.preventDefault();
                     void load(file, hs);
-                    setWhole((w) => ({ ...w, [file]: !w[file] }));
+                    setWhole((w) => ({ ...w, [fileKey(file, hs)]: !w[fileKey(file, hs)] }));
                   }}
                 >
-                  {whole[file] ? "Diff only" : "View file"}
+                  {whole[fileKey(file, hs)] ? "Diff only" : "View file"}
                 </button>
               )}
               <a
                 className="across-link"
-                href={routeHref({ page: "file", path: file, chunk: chunkOf.get(first.id) ?? "skim" })}
+                href={routeHref({ page: "file", path: file, chunk: chunkOf.get(first.id) ?? "skim", ...(mixed && first.pr !== undefined ? { pr: first.pr } : {}) })}
                 title={`This file's changes in every ${unit}, side by side`}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -307,7 +320,7 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
                       </tr>
                     )}
                     {numberLines(seg.hunk).map((l, i) => {
-                      const anchor = anchorOf(file, l);
+                      const anchor = anchorOf(file, l, first.pr);
                       const lineNotes = anchor ? notes.filter((n) => same(anchor, n)) : [];
                       const isComposing = anchor && composing && same(anchor, composing);
                       return (

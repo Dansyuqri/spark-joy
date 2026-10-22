@@ -342,16 +342,24 @@ describe("review app", () => {
       id: "features",
       chunks: [chunk("five", "Line five", ids(1)), chunk("five2", "Line five again", ids(2, "src/app.ts")), chunk("util2", "Util constant", ids(2, "src/util.ts")), chunk("readme2", "Readme", ids(3))],
     });
-    raw.features = [{ title: "Line five", description: "Marks then rewrites it", hunks: [...ids(1), ...ids(2, "src/app.ts")] }];
+    const five = [...ids(1), ...ids(2, "src/app.ts")];
+    const rest = [...ids(2, "src/util.ts"), ...ids(3)];
+    for (const id of ["stack-layers", "stack-features"])
+      raw.strategies.push({ id, chunks: [chunk(`${id}-five`, "Line five", five), chunk(`${id}-rest`, "Util and readme", rest)] });
+    raw.features = [{ title: "Line five", description: "Marks then rewrites it", hunks: five }];
     await writeJson(paths.plan, raw);
     const s = await serve({ paths, appDir, port: 0 });
     try {
       await page.goto(`${s.url}/#/plan`);
       await page.getByRole("heading", { name: "Whole PRs" }).waitFor();
-      const layers = page.locator(".strategy", { has: page.getByRole("heading", { name: "Foundations first" }) });
+      const layers = page.locator(".strategy", { has: page.getByRole("heading", { name: "Foundations first", exact: true }) });
       await layers.locator(".stats", { hasText: "4 chunks in 3 PRs" }).waitFor();
       await expect(layers.locator(".pr-group").allTextContents()).resolves.toEqual(["#1 PR 1", "#2 PR 2", "#3 PR 3"]);
-      await page.getByRole("heading", { name: "By feature" }).waitFor();
+      await page.getByRole("heading", { name: "By feature", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "By feature across PRs" }).waitFor();
+      const across = page.locator(".strategy", { has: page.getByRole("heading", { name: "Foundations first across PRs" }) });
+      await across.locator(".stats", { hasText: "2 chunks across 3 PRs" }).waitFor();
+      await expect(across.locator(".chunk-list li").first().locator(".pr-link").allTextContents()).resolves.toEqual(["#1", "#2"]);
       await expect(page.locator(".hint").count()).resolves.toBe(0);
       await page.screenshot({ path: process.env.SHOT_STACK_PLAN ?? "/dev/null", fullPage: true }).catch(() => {});
       await layers.getByRole("button", { name: "Start" }).click();
@@ -371,6 +379,28 @@ describe("review app", () => {
       await expect(pr2.getByRole("link", { name: "Open in review" }).getAttribute("href")).resolves.toBe("#/review/3?file=src%2Fapp.ts");
       await expect(page.locator(".steps .step.on").textContent()).resolves.toBe("2");
       await page.screenshot({ path: process.env.SHOT_STACK_LAYERS_ACROSS ?? "/dev/null" }).catch(() => {});
+
+      // Across the stack: one chunk holds both PRs' changes to the file, each in its own section.
+      await page.goto(`${s.url}/#/plan`);
+      await across.getByRole("button", { name: "Start" }).click();
+      await page.getByRole("heading", { name: /Line five/ }).waitFor();
+      await expect(head.locator(".pr-link").allTextContents()).resolves.toEqual(["#1", "#2"]);
+      const sections = page.locator("details.file", { has: page.locator(".path", { hasText: "src/app.ts" }) });
+      await expect(sections.locator(".badge.pr").allTextContents()).resolves.toEqual(["#1", "#2"]);
+      // A note on PR 2's version of the line stays with PR 2.
+      await sections.nth(1).locator("tr.line.add td.no").first().click();
+      await page.getByPlaceholder(/Line note/).fill("Why rewrite?");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await sections.nth(1).locator(".line-note .text", { hasText: "Why rewrite?" }).waitFor();
+      await expect(sections.nth(0).locator(".line-note").count()).resolves.toBe(0);
+      await page.screenshot({ path: process.env.SHOT_STACK_MIXED ?? "/dev/null", fullPage: true }).catch(() => {});
+      await page.locator(".saving", { hasText: "Saved" }).waitFor();
+      await expect(readState(paths).then((st) => st.lineNotes.map((n) => [n.pr, n.text]))).resolves.toEqual([[2, "Why rewrite?"]]);
+      // Across PRs from PR 2's section starts on PR 2.
+      await sections.nth(1).getByRole("link", { name: "Across PRs" }).click();
+      await expect.poll(() => page.locator(".steps .step.on").textContent()).toBe("2");
+      await page.goto(`${s.url}/#/summary`);
+      await expect(page.locator(".note-group li").textContent()).resolves.toMatch(/^#2 src\/app\.ts:6/);
     } finally {
       await s.close();
       rmSync(repo.dir, { recursive: true, force: true });

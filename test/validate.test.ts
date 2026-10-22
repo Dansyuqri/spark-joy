@@ -225,7 +225,7 @@ describe("stack mode", () => {
     const layers = [chunk("a", ["h001"]), chunk("b", ["h002"]), chunk("c", ["h003", "h004"])];
     const r = validatePlan(stack(layers), prHunks);
     expect(r.issues.map((i) => i.message)).toEqual([
-      "only one order besides whole PRs; the reviewer is meant to choose between a foundations-first and a by-feature order",
+      "layers without features; the reviewer is meant to choose between a foundations-first and a by-feature order",
     ]);
     const both = stack(layers);
     both.strategies = [...both.strategies, { id: "features", chunks: [chunk("x", ["h001", "h002"]), chunk("y", ["h003", "h004"])] }];
@@ -235,12 +235,31 @@ describe("stack mode", () => {
 
   it("keeps each chunk within one PR, and each PR's chunks together", () => {
     expect(errors(validatePlan(stack([chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004"])]), prHunks))).toEqual([
-      "chunk mixes PRs 1, 2; keep each chunk within one PR",
-      "chunk mixes PRs 1, 2; keep each chunk within one PR",
+      "chunk mixes PRs 1, 2; keep each chunk within one PR, or use stack-layers and stack-features to mix them",
+      "chunk mixes PRs 1, 2; keep each chunk within one PR, or use stack-layers and stack-features to mix them",
     ]);
     expect(errors(validatePlan(stack([chunk("a", ["h001"]), chunk("c", ["h003", "h004"]), chunk("b", ["h002"])]), prHunks))).toEqual([
       "chunk of PR 1 comes after a later PR's chunk; keep each PR's chunks together, bottom PR first",
     ]);
+  });
+
+  it("lets orders across the stack mix PRs, warning when a file goes back to an earlier PR", () => {
+    const across = (id: string, chunks: ReturnType<typeof chunk>[]) => ({ id, chunks });
+    const mixed = [chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004"])];
+    const plan = { ...stack([]), strategies: [whole, across("stack-layers", mixed), across("stack-features", mixed)] };
+    expect(validatePlan(plan, prHunks).issues).toEqual([]);
+
+    // h005 is PR 1's change to the file PR 2's h003 also changes.
+    const late = [...prHunks, { ...hunk("h005"), file: "src/h003.ts", pr: 1 }];
+    const wholeLate = { id: "stack", chunks: [pr(1, ["h001", "h002", "h005"]), pr(2, ["h003", "h004"])] };
+    const backwards = [chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004", "h005"])];
+    const features = [{ title: "F", description: "d", hunks: ["h001", "h002", "h003", "h005"] }];
+    const r = validatePlan({ ...plan, features, strategies: [wholeLate, across("stack-layers", backwards), across("stack-features", backwards)] }, late);
+    expect(warnings(r)).toEqual([
+      "src/h003.ts from PR 1 comes after a later PR's change to it; show it first",
+      "src/h003.ts from PR 1 comes after a later PR's change to it; show it first",
+    ]);
+    expect(errors(r)).toEqual([]);
   });
 
   it("needs the whole-PR strategy first, every hunk placed, and no skim", () => {

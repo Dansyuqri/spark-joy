@@ -5,13 +5,14 @@ import {
   featureHunks,
   hunkStatus,
   notesInHunks,
+  prChunk,
   progress,
   type StrategyView,
 } from "../../shared/derive";
 import type { Plan, ReviewState } from "../../shared/schema";
 import { exportReview, type RunData } from "../api";
 import { routeHref } from "../App";
-import { StatusIcon } from "./bits";
+import { PrLink, StatusIcon } from "./bits";
 
 interface Props {
   data: RunData;
@@ -79,6 +80,12 @@ export function SummaryPage({ data, plan, view, state, flush }: Props) {
               <ul>
                 {lines.map((n) => (
                   <li key={n.id}>
+                    {/* In a stack, which PR the note is on. */}
+                    {prChunk(plan, n.pr) && (
+                      <>
+                        <PrLink meta={data.meta} chunk={prChunk(plan, n.pr)!} />{" "}
+                      </>
+                    )}
                     <code>
                       {n.file}:{n.line}
                     </code>{" "}

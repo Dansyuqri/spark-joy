@@ -13,8 +13,9 @@ export type Route =
   | { page: "plan" }
   | { page: "map"; chunk?: number }
   | { page: "review"; chunk: number | "skim"; file?: string; hunk?: string }
-  // One file across every chunk; `chunk` is the one to start on.
-  | { page: "file"; path: string; chunk?: number | "skim" }
+  // One file across every chunk; `chunk` is the one to start on, and in a
+  // stack `pr` the PR, when that chunk spans several.
+  | { page: "file"; path: string; chunk?: number | "skim"; pr?: number }
   | { page: "summary" };
 
 const chunkArg = (arg: string | undefined) => Math.max(0, Number(arg ?? 1) - 1) || 0;
@@ -28,7 +29,8 @@ function parseRoute(hash: string): Route | undefined {
   if (page === "file") {
     const q = new URLSearchParams(query);
     const at = q.get("at") ?? undefined;
-    return { page: "file", path: q.get("path") ?? "", chunk: at === "skim" ? "skim" : at ? chunkArg(at) : undefined };
+    const pr = Number(q.get("pr")) || undefined;
+    return { page: "file", path: q.get("path") ?? "", chunk: at === "skim" ? "skim" : at ? chunkArg(at) : undefined, ...(pr ? { pr } : {}) };
   }
   if (page === "review") {
     const q = new URLSearchParams(query);
@@ -46,6 +48,7 @@ export function routeHref(r: Route): string {
   if (r.page === "file") {
     const q = new URLSearchParams({ path: r.path });
     if (r.chunk !== undefined) q.set("at", r.chunk === "skim" ? "skim" : String(r.chunk + 1));
+    if (r.pr !== undefined) q.set("pr", String(r.pr));
     return `#/file?${q}`;
   }
   if (r.page !== "review") return `#/${r.page}`;
@@ -199,7 +202,7 @@ export function App() {
       ) : current.page === "map" ? (
         <MapPage data={data} plan={data.plan} view={view} state={state} at={current.chunk} />
       ) : current.page === "file" ? (
-        <FilePage data={data} plan={data.plan} view={view} state={state} path={current.path} at={current.chunk} />
+        <FilePage data={data} plan={data.plan} view={view} state={state} path={current.path} at={current.chunk} pr={current.pr} />
       ) : current.page === "summary" ? (
         <SummaryPage data={data} plan={data.plan} view={view} state={state} flush={flush} />
       ) : (
