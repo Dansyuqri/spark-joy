@@ -31,6 +31,15 @@ export const unitName = (plan: Plan, meta: Meta): string =>
 // "#12" on GitHub, "!12" on GitLab.
 export const prRef = (meta: Meta, n: number): string => `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`;
 
+// Related PRs: what a PR is diffed against, e.g. "targets main" or "builds on #12".
+export function prTarget(meta: Meta, n: number | undefined): string | undefined {
+  const prs = meta.stack?.related ? meta.stack.prs : [];
+  const p = prs.find((x) => x.number === n);
+  if (!p) return undefined;
+  const parent = prs.find((x) => x.head === p.base && x !== p);
+  return parent ? `builds on ${prRef(meta, parent.number)}` : `targets ${p.base}`;
+}
+
 // Stack mode: the PR's own chunk, by PR number.
 export const prChunk = (plan: Plan, n: number | undefined): Chunk | undefined =>
   plan.mode === "stack" && n !== undefined ? plan.strategies[0]!.chunks.find((c) => c.pr?.number === n) : undefined;

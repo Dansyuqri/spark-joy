@@ -92,7 +92,8 @@ export interface StackTarget {
   number: number;
   url: string;
   // The commit the PR's diff starts from and the commit it targets: the PR
-  // below's head, or the base branch for the bottom one.
+  // below's head, or the base branch for the bottom one (for related PRs, the
+  // PR or base branch each one targets).
   mergeBase: string;
   start: string;
   headSha: string;
@@ -125,14 +126,15 @@ function collectStack(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: Rev
       number: p.number,
       url: p.url,
       mergeBase: p.mergeBase,
-      start: below?.headSha ?? meta.baseSha,
+      start: p.start ?? below?.headSha ?? meta.baseSha,
       headSha: p.headSha,
     };
     // Notes with no PR, or on a PR no longer in the stack, go to the top one.
     const mine = notes.filter((n) => (n.pr !== undefined && index.has(n.pr) ? n.pr === p.number : p === top));
     // A PR that doesn't target the one below was diffed against it anyway, so
     // its line numbers aren't the forge's; keep its notes out of the diff.
-    const chained = !below || p.base === below.head;
+    // Related PRs are each diffed against what they target.
+    const chained = stack.related || !below || p.base === below.head;
     const { placed, stray } = chained
       ? place(hunks.filter((h) => h.pr === p.number), mine.map((n) => ({ ...n, pr: p.number })))
       : { placed: [], stray: mine };
