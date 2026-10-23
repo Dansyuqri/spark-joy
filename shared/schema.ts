@@ -35,7 +35,8 @@ export const Hunk = z.object({
   // Set when a large hunk was split into pieces; points at the original id.
   parent: z.string().optional(),
   // Stack runs: the number of the PR or MR this hunk is from. Each PR is
-  // diffed against the one below it, so hunks are only comparable within one.
+  // diffed against the one below it (or, for related PRs, what it targets),
+  // so hunks are only comparable within one.
   pr: z.number().int().optional(),
 });
 export type Hunk = z.infer<typeof Hunk>;
@@ -51,15 +52,18 @@ export const Meta = z.object({
   working: z.boolean(),
   // What the diff covers. `mergeBase` is the commit it starts from: the
   // merge-base for "pr" and "working", HEAD for "staged" and "uncommitted".
-  // "stack" holds existing PRs or MRs: `mergeBase` is where the bottom one
-  // starts and `headSha` the top one's head.
+  // "stack" holds existing PRs or MRs, stacked or related: `mergeBase` is
+  // where the first one starts and `headSha` the last one's head.
   source: z.enum(["pr", "working", "staged", "uncommitted", "stack"]).optional(),
   stack: z
     .object({
       forge: z.enum(["github", "gitlab"]),
       host: z.string(),
       repo: z.string(),
-      // Bottom first.
+      // Related PRs rather than a stack: each is diffed against what it
+      // targets, the base branch or another PR in the run, not the one before.
+      related: z.boolean().optional(),
+      // Bottom first; for related PRs, any PR another one builds on comes first.
       prs: z.array(
         z.object({
           number: z.number().int(),
@@ -69,6 +73,9 @@ export const Meta = z.object({
           head: z.string(),
           mergeBase: z.string(),
           headSha: z.string(),
+          // The commit the PR's diff is shown against: the PR it builds on,
+          // or its base branch.
+          start: z.string().optional(),
         }),
       ),
     })

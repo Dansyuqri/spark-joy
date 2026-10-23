@@ -4,6 +4,7 @@ import {
   groupedByPr,
   prChunk,
   prRef,
+  prTarget,
   hunkStatus,
   notesInHunks,
   setReviewed,
@@ -105,6 +106,8 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
   const grouped = groupedByPr(plan, view.strategy);
   const prOf = (i: number) => (grouped ? view.chunks[i]?.chunk.pr?.number : undefined);
   const pr = current ? prChunk(plan, prOf(index as number)) : undefined;
+  // Related PRs: what this one is diffed against.
+  const target = prTarget(data.meta, current?.chunk.pr?.number);
 
   const fileNames = new Set(hunks.map((h) => h.file));
   const files = fileNames.size;
@@ -162,6 +165,7 @@ export function ReviewPage({ data, plan, view, state, update, at, file, hunk }: 
             {current ? `${index === "skim" ? "" : (index as number) + 1}/${count} · ${current.size} lines · ` : ""}
             {plural(files, "file")}
             {status === "partial" && ` · ${viewedFiles}/${files} viewed`}
+            {target && ` · ${target}`}
           </div>
           {current && plan.mode === "stack" && !grouped ? (
             // The PR's own description, which can run long.

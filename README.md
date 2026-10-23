@@ -19,6 +19,8 @@ AI-written PRs are often thousands of lines long: too big to review properly. sp
 
 Reviewing a stack of PRs someone already opened? spark-joy loads them straight from GitHub or GitLab. See [Review stacked PRs](#review-stacked-prs).
 
+PRs that belong together but aren't stacked? Add a "Relates to #12" line to a description (or run `spark-joy link`) and review them all in one view. See [Review related PRs](#review-related-prs).
+
 Writing the big PR yourself? spark-joy can also split your staged, uncommitted or branch changes into small stacked PRs. See [Split your own changes](#split-your-own-changes).
 
 Works from plain git, so GitHub, GitLab or anything else. Nothing is posted unless you ask; notes export as markdown, or go to the PR as a pending review.
@@ -96,6 +98,8 @@ Every command ends with a `next:` line saying what comes next: a command to run,
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
 | `spark-joy extract --staged \| --uncommitted` | Diff `HEAD` against the index or the working tree, for splitting |
 | `spark-joy stack <pr> \| --prs a,b,c` | Load existing stacked PRs or MRs into a run, one chunk per PR (the agent can break big ones up) |
+| `spark-joy related <pr> \| --prs a,b,c` | Load a PR and every PR it relates to ("Relates to" links, both ways) into one run, each against its own base |
+| `spark-joy link <pr> <prs…>` | Add a "Relates to" line naming the other PRs to the first PR's description |
 | `spark-joy status` | Where a run stands, and the `next:` step |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
@@ -149,6 +153,21 @@ spark-joy serve --run pr-12-stack
 - Big PRs can be broken up too: the agent adds *Foundations first* and *By feature* orders that split each PR into chunks, PR by PR, listed under the PR they come from. Pick one on the Plan page or stay with *Whole PRs*; progress carries over between them. **Across PRs** still shows one panel per PR in every order.
 - It talks to the forge through `gh` or `glab`, so it uses their login and stores no tokens. The forge comes from the remote's host; pass `--forge github|gitlab` for a self-hosted one whose name doesn't say, and `--remote` if the PRs aren't on `origin`.
 - `comments --post` (or asking your agent to post your notes) sends each one to the PR it was left on, as a pending review (or draft notes) on that PR's head, with line notes on that PR's own diff lines. It posts nothing if any PR has moved on since you loaded it. A chunk note goes to its PR; a chunk that spans PRs goes to the highest one and names the others. If a PR doesn't target the one below it (`--prs` warned), its line notes go in its review body instead of inline.
+
+## Review related PRs
+
+Some changes span PRs that aren't a stack: an API and the client that uses it, each on `main`, or a fix and its follow-up. Link them in a description and review them in one place, one chunk per PR, with **Across PRs** showing a file in each PR that touches it.
+
+```sh
+spark-joy related 12                # or a PR/MR URL
+spark-joy related --prs 12,15,20    # exactly these, no links needed
+spark-joy link 12 15 20             # adds "Relates to #15, #20" to #12's description
+spark-joy serve --run pr-12-related
+```
+
+- It follows `Relates to #15` lines (also `Related:`, `Related PRs:`, PR URLs, and `!15` on GitLab) from PR to PR, and finds open PRs that link back. One link anywhere connects two PRs. Links to other repos are listed but not loaded.
+- Each PR is diffed against what it targets: its base branch, or, when it's based on another PR in the run, that PR. The review page says which ("targets main", "builds on #12").
+- Everything else works as for a stack: the agent can break big PRs up, and `comments --post` sends each note to the PR it was left on, inline on that PR's own lines.
 
 ## Develop
 

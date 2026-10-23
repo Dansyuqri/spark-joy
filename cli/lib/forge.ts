@@ -34,6 +34,8 @@ export interface Forge {
   // sees either until they submit their review on the forge.
   postReview(n: number, review: ReviewPayload): Promise<void>;
   postDraftNote(n: number, note: DraftNote): Promise<void>;
+  // Replace a PR's description.
+  setBody(n: number, body: string): Promise<void>;
 }
 
 // The ref a PR's head can be fetched from.
@@ -91,6 +93,80 @@ export function walkStack(start: ForgePR, open: readonly ForgePR[]): { prs: Forg
   }
   return { prs, warnings };
 }
+
+// PRs a description names on a "Relates to" line, e.g. "Relates to #12, #15",
+// "Related: !7" or a PR URL. `elsewhere` holds refs to other repos, which a run
+// can't load.
+export function parseRelated(body: string, remote: Remote): { prs: number[]; elsewhere: string[] } {
+  const prs: number[] = [];
+  const elsewhere: string[] = [];
+  const sigil = remote.forge === "gitlab" ? "!" : "#";
+  for (const line of body.split(/\r?\n/)) {
+    const text = line.replace(/\*\*|__/g, "").replace(/^\s*(?:[-*>]\s*)*/, "");
+    // The refs must follow straight away, so "Related work lands in #5" isn't one.
+    const m = /^(?:relates?\s+to|related(?:\s+to|\s+(?:prs?|mrs?|pull requests?|merge requests?))?)\s*:?\s+((?:[#!\[(]|https?:|[\w.-]+\/[\w.-]+[#!]).*)$/i.exec(text);
+    if (!m) continue;
+    const add = (n: number) => !prs.includes(n) && prs.push(n);
+    for (const u of m[1]!.matchAll(/https?:\/\/([^/\s)]+)\/([^\s)]+?)\/(?:-\/)?(?:pull|merge_requests)\/(\d+)/g)) {
+      if (u[1]!.toLowerCase() === remote.host && u[2]!.toLowerCase() === remote.path.toLowerCase()) add(Number(u[3]));
+      else elsewhere.push(u[0]);
+    }
+    // Short refs, outside URLs: "#12", "!12", or "owner/repo#12" for another repo.
+    const short = m[1]!.replace(/https?:\/\/\S+/g, " ");
+    for (const r of short.matchAll(new RegExp(`(?:^|[\\s,(\\[])([\\w.-]+(?:/[\\w.-]+)+)?\\${sigil}(\\d+)\\b`, "g"))) {
+      if (!r[1] || r[1].toLowerCase() === remote.path.toLowerCase()) add(Number(r[2]));
+      else elsewhere.push(`${r[1]}${sigil}${r[2]}`);
+    }
+  }
+  return { prs, elsewhere };
+}
+
+export const RELATED_LIMIT = 25;
+
+// Every PR reachable from `start` through "Relates to" links, in either
+// direction: a PR's own links, and open PRs whose links name it.
+export async function walkRelated(
+  start: ForgePR,
+  forge: Pick<Forge, "get" | "listOpen" | "remote">,
+): Promise<{ prs: ForgePR[]; warnings: string[] }> {
+  const remote = forge.remote;
+  const name = (n: number) => prName(remote.forge, n);
+  const warnings: string[] = [];
+  const open = await forge.listOpen();
+  const known = new Map(open.map((p) => [p.number, p]));
+  known.set(start.number, start);
+  const parsed = new Map<number, ReturnType<typeof parseRelated>>();
+  const links = (p: ForgePR) => parsed.get(p.number) ?? parsed.set(p.number, parseRelated(p.body, remote)).get(p.number)!;
+  const prs: ForgePR[] = [];
+  const queue = [start];
+  const seen = new Set([start.number]);
+  const elsewhere = new Set<string>();
+  while (queue.length) {
+    const cur = queue.shift()!;
+    if (prs.length >= RELATED_LIMIT) {
+      warnings.push(`stopped at ${RELATED_LIMIT} PRs; use --prs to pick`);
+      break;
+    }
+    prs.push(cur);
+    const own = links(cur);
+    own.elsewhere.forEach((e) => elsewhere.add(e));
+    const back = open.filter((p) => links(p).prs.includes(cur.number)).map((p) => p.number);
+    for (const n of [...own.prs, ...back]) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      const p = known.get(n) ?? (await forge.get(n).catch(() => undefined));
+      if (!p) warnings.push(`${name(cur.number)} links to ${name(n)}, which isn't a ${remote.forge === "gitlab" ? "MR" : "PR"} in ${remote.path}; skipped`);
+      else if (p.fork) warnings.push(`${name(n)} is from a fork; skipped`);
+      else queue.push(p);
+    }
+  }
+  if (elsewhere.size) warnings.push(`links to other repos aren't loaded: ${[...elsewhere].join(", ")}`);
+  return { prs, warnings };
+}
+
+// The line `link` adds to a description.
+export const relatedLine = (forge: ForgeKind, ns: readonly number[]) =>
+  `Relates to ${ns.map((n) => `${forge === "gitlab" ? "!" : "#"}${n}`).join(", ")}`;
 
 // Every JSON value in `text`, which paginated CLI output prints back to back.
 export function parseJsonStream(text: string): unknown[] {
@@ -164,7 +240,9 @@ export function cliForge(remote: Remote): Forge {
       if (input !== undefined) child.stdin!.end(input);
     });
   const api = async (path: string, paginate = false) => parseJsonStream(await call([...(paginate ? ["--paginate"] : []), path]));
-  const post = async (path: string, body: unknown) => void (await call(["--method", "POST", "--input", "-", path], JSON.stringify(body)));
+  const send = (method: string) => async (path: string, body: unknown) =>
+    void (await call(["--method", method, "--input", "-", path], JSON.stringify(body)));
+  const post = send("POST");
   if (remote.forge === "github") {
     const repo = `repos/${remote.path}`;
     return {
@@ -173,6 +251,7 @@ export function cliForge(remote: Remote): Forge {
       listOpen: async () => (await api(`${repo}/pulls?state=open&per_page=100`, true)).flat().map((p) => fromGithub(p as Json)),
       postReview: (n, review) => post(`${repo}/pulls/${n}/reviews`, review),
       postDraftNote: () => Promise.reject(new Error("draft notes are GitLab's; post a review on GitHub")),
+      setBody: (n, body) => send("PATCH")(`${repo}/pulls/${n}`, { body }),
     };
   }
   const project = `projects/${encodeURIComponent(remote.path)}`;
@@ -183,5 +262,6 @@ export function cliForge(remote: Remote): Forge {
       (await api(`${project}/merge_requests?state=opened&per_page=100`, true)).flat().map((p) => fromGitlab(p as Json)),
     postReview: () => Promise.reject(new Error("reviews are GitHub's; post draft notes on GitLab")),
     postDraftNote: (n, note) => post(`${project}/merge_requests/${n}/draft_notes`, note),
+    setBody: (n, description) => send("PUT")(`${project}/merge_requests/${n}`, { description }),
   };
 }

@@ -8,7 +8,7 @@ import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
 import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews, type DraftNote, type ReviewPayload } from "./lib/comments";
 import { extract, extractStack } from "./lib/extract";
-import { cliForge, parsePrArg, parseRemote, prName, type Forge, type ForgeKind, type Remote } from "./lib/forge";
+import { cliForge, parsePrArg, parseRelated, parseRemote, prName, relatedLine, type Forge, type ForgeKind, type Remote } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
@@ -36,6 +36,13 @@ Commands:
       --prs <a,b,c>     Exactly these PRs, bottom first, instead of finding the stack
       --remote <name>   Remote the PRs are on (default origin)
       --forge <name>    github or gitlab, when the remote's host doesn't say
+  related <pr>          Load a PR or MR and every one it relates to into one review, one chunk per PR.
+                        Follows "Relates to #12" lines in descriptions, both ways and onward;
+                        each PR is diffed against what it targets. Needs gh or glab, logged in
+      --prs <a,b,c>     Exactly these PRs instead of following links
+      --remote, --forge As for stack
+  link <pr> <prs...>    Add "Relates to #b, #c" to the first PR's description, so \`related\` finds them
+      --remote, --forge As for stack
   status                Where the run stands and what to do next
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
@@ -162,10 +169,12 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
       return 0;
     }
 
-    case "stack": {
+    case "stack":
+    case "related": {
+      const related = cmd === "related";
       const { remote, name: remoteName } = await repoRemote(cwd, values.remote, values.forge);
       const prs = values.prs?.split(",").filter((x) => x.trim()).map((x) => parsePrArg(x, remote));
-      if (!prs?.length && !rest[0]) throw new Error("pass a PR number or URL, e.g. `spark-joy stack 12`, or --prs 12,13,14");
+      if (!prs?.length && !rest[0]) throw new Error(`pass a PR number or URL, e.g. \`spark-joy ${cmd} 12\`, or --prs 12,13,14`);
       const splitAt = values["split-at"] ? Number(values["split-at"]) : undefined;
       if (splitAt !== undefined && !(splitAt >= 40)) throw new Error("--split-at must be a number ≥ 40");
       const r = await extractStack({
@@ -174,6 +183,7 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
         remote: remoteName,
         start: rest[0] ? parsePrArg(rest[0], remote) : undefined,
         prs,
+        related,
         run: values.run,
         splitAt,
       });
@@ -185,6 +195,27 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
       });
       console.log(`wrote ${relative(cwd, r.paths.dir)}, with a plan of one chunk per ${remote.forge === "gitlab" ? "MR" : "PR"}`);
       await printNext(r.paths);
+      return 0;
+    }
+
+    case "link": {
+      const { remote } = await repoRemote(cwd, values.remote, values.forge);
+      const [n, ...others] = [...new Set(rest.map((x) => parsePrArg(x, remote)))];
+      if (n === undefined || !others.length)
+        throw new Error("pass a PR and the PRs it relates to, e.g. `spark-joy link 12 15 20`");
+      const forge = makeForge(remote);
+      // Fetching each one checks it exists before anything is written.
+      const [pr] = await Promise.all([n, ...others].map((x) => forge.get(x)));
+      const have = parseRelated(pr!.body, remote).prs;
+      const add = others.filter((x) => !have.includes(x));
+      if (!add.length) console.log(`${prName(remote.forge, n)} already relates to ${others.map((x) => prName(remote.forge, x)).join(", ")}`);
+      else {
+        const line = relatedLine(remote.forge, add);
+        const body = pr!.body.trimEnd();
+        await forge.setBody(n, `${body}${body ? "\n\n" : ""}${line}\n`);
+        console.log(`${prName(remote.forge, n)}  added "${line}" to its description  ${pr!.url}`);
+      }
+      console.log(formatNext([{ cmd: `related ${n}`, why: "load them all into one review" }]));
       return 0;
     }
 

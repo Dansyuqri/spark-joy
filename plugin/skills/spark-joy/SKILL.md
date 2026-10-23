@@ -1,6 +1,6 @@
 ---
 name: spark-joy
-description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or load an existing stack of PRs/MRs for review, one PR per chunk; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR or MR as a pending GitHub review or GitLab draft notes. Use when the user wants help reviewing a big PR, MR or branch, or a stack of PRs or MRs, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
+description: Break a large PR/MR into small, ordered chunks and open a local app where a human reviews them one at a time; or load an existing stack of PRs/MRs, or a PR and every PR it relates to, for review in one view, one PR per chunk; or link related PRs; or split the user's own staged, uncommitted or branch changes into small stacked PRs; or post the reviewer's own notes to the PR or MR as a pending GitHub review or GitLab draft notes. Use when the user wants help reviewing a big PR, MR or branch, or a stack of PRs or MRs, wants to review related PRs together or link PRs, asks to chunk or split a diff for review, asks to split their changes into smaller PRs, asks to post their review notes as PR comments, or types /spark-joy.
 ---
 
 # spark-joy
@@ -9,6 +9,7 @@ You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two 
 - **Review** (default): someone else's PR, read in chunks. Steps 1–5.
 - **Split**: the user's own changes become stacked PRs. Steps 1–3, then [Split mode](#split-mode).
 - **Stack**: existing stacked PRs or MRs on GitHub or GitLab, one chunk per PR. [Stacked PRs](#stacked-prs).
+- **Related**: a PR and every PR it relates to, stacked or not, one chunk per PR. [Related PRs](#related-prs).
 - **Post notes**: the reviewer's own notes go to the PR or MR as a pending review. [Step 7](#7-post-the-reviewers-notes-only-when-asked).
 
 The reader is a tired human. **Every word you write is load on them. Be terse.**
@@ -218,6 +219,20 @@ It fetches each PR's head, diffs it against the PR below it, and writes the plan
 - Leave the `stack` strategy as written. Features may span PRs.
 
 Validate, then `spark-joy serve --run <run>` in the background as in step 6. Re-importing keeps your additions while the PRs are unchanged; if it warns they changed, plan `layers` and `features` again. To post the reviewer's notes, see [step 7](#7-post-the-reviewers-notes-only-when-asked).
+
+## Related PRs
+
+Use it when the user wants to review PRs or MRs that belong together but aren't one stack: they may each target `main`, or a mix. It needs `gh` or `glab`, logged in.
+
+```
+spark-joy related <n or URL>        # this PR and every one it relates to
+spark-joy related --prs 12,15,20    # exactly these
+spark-joy link 12 15 20             # add "Relates to #15, #20" to #12's description
+```
+
+`related` follows "Relates to #12" (or "Related:", a PR URL, `!12` on GitLab) lines in descriptions, both ways and onward, and loads every PR it reaches into one run, `pr-<n>-related`. Each PR is diffed against what it targets: its base branch, or the PR in the run whose branch it's based on. Pass on `warn` lines (links to other repos aren't loaded; a PR with no links). Everything after that is as in [Stacked PRs](#stacked-prs): the plan is written, big PRs can be broken up the same way, and notes post to their own PR.
+
+`link` edits the first PR's description on the forge, so run it only when the user asks to link PRs. If it says they're already linked, nothing changed.
 
 ## After new commits
 
