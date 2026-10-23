@@ -85,6 +85,15 @@ export async function runStatus(p: RunPaths): Promise<Status> {
         : [{ cmd: `export ${run}` }, { cmd: `serve ${run}`, why: "keep reviewing" }],
     };
   }
+  // Related PRs are read best across PRs: their foundations first, or one feature at a time.
+  if (meta.stack?.related && meta.stack.prs.length > 1 && !brokenUp)
+    return {
+      lines,
+      next: [
+        { ask: `/spark-joy break up ${p.name}`, why: "groups the PRs' changes by foundations and by feature" },
+        { cmd: `serve ${run}`, why: "review whole PRs" },
+      ],
+    };
   if (big.length && !brokenUp) {
     const forge = meta.stack!.forge;
     const which = big.map((b) => `${prName(forge, b.number)} is ${b.lines} lines`).join(", ");

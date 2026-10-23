@@ -20,7 +20,14 @@ export const defaultPrefix = (branch: string) => (branch === "HEAD" ? "split" : 
 
 export const branchName = (prefix: string, n: number, c: Chunk) => c.branch ?? `${prefix}/${n}-${branchSlug(c.title)}`;
 
-const LABELS: Record<string, string> = { layers: "Foundations first", features: "By feature", split: "Stacked PRs", stack: "Whole PRs" };
+const LABELS: Record<string, string> = {
+  layers: "Foundations first",
+  features: "By feature",
+  split: "Stacked PRs",
+  stack: "Whole PRs",
+  "across-layers": "Foundations first across PRs",
+  "across-features": "By feature across PRs",
+};
 export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ?? s.id;
 
 // What a chunk is called: "MR" for a GitLab stack, "PR" for any other stack or
@@ -46,7 +53,15 @@ export const prChunk = (plan: Plan, n: number | undefined): Chunk | undefined =>
 
 // Stack mode: whether a strategy breaks the PRs into chunks, so its chunks are
 // listed under the PR they come from.
-export const groupedByPr = (plan: Plan, s: Strategy): boolean => plan.mode === "stack" && s.id !== "stack";
+export const groupedByPr = (plan: Plan, s: Strategy): boolean => plan.mode === "stack" && s.id !== "stack" && !ACROSS_PRS.includes(s.id);
+
+// Stack mode: orders whose chunks may take hunks from several PRs, so a
+// reviewer goes through the foundations, or one feature, of every PR at once.
+// Meant for related PRs, which don't build on each other the way a stack does.
+export const ACROSS_PRS: readonly string[] = ["across-layers", "across-features"];
+
+// The PRs a run of hunks comes from, in the order they first appear.
+export const prsOf = (hs: readonly Hunk[]): number[] => [...new Set(hs.flatMap((h) => (h.pr === undefined ? [] : [h.pr])))];
 
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;
 
@@ -73,7 +88,8 @@ export function strategyView(plan: Plan, hunks: readonly Hunk[], strategyId: str
   const chunks = strategy.chunks.map((c, index) => {
     const hs = c.hunks.map((id) => byId.get(id)).filter((h): h is Hunk => !!h);
     hs.forEach((h) => placed.add(h.id));
-    const pr = c.pr ?? prChunk(plan, hs[0]?.pr)?.pr;
+    const from = prsOf(hs);
+    const pr = c.pr ?? (from.length === 1 ? prChunk(plan, from[0])?.pr : undefined);
     const chunk = pr && !c.pr ? { ...c, pr } : c;
     return { chunk, index, hunks: hs, size: changedLines(hs) };
   });

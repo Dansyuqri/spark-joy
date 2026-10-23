@@ -3,6 +3,7 @@ import {
   featureChunks,
   featureHunks,
   headLabel,
+  prRef,
   hunkStatus,
   notesInHunks,
   progress,
@@ -25,6 +26,8 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
   const p = progress(view, reviewed);
   const pct = p.linesTotal ? Math.round((100 * p.linesDone) / p.linesTotal) : 100;
   const out: string[] = [];
+  // In a stack, the PR a line note is on, since line numbers differ between PRs.
+  const on = (pr: number | undefined) => (pr === undefined ? "" : `${prRef(meta, pr)} `);
 
   out.push(`# Review: ${plan.title ?? meta.branch}`, "");
   out.push(`${p.done}/${p.total} chunks · ${pct}% lines · \`${meta.base}\` → ${headLabel(meta)}`, "");
@@ -48,7 +51,7 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
     const note = state.chunkNotes[chunkNoteKey(view.strategy.id, c.chunk.id)]?.trim();
     if (note) out.push(...note.split("\n").map((l) => `  > ${l}`));
     for (const n of notesInHunks(c.hunks, state.lineNotes))
-      out.push(`  - \`${n.file}:${n.line}\`${n.side === "old" ? " (old)" : ""} ${n.text.trim()}`);
+      out.push(`  - ${on(n.pr)}\`${n.file}:${n.line}\`${n.side === "old" ? " (old)" : ""} ${n.text.trim()}`);
   }
   if (view.skim.length) out.push(`- ${MARK[hunkStatus(view.skim, reviewed)]} Skim (${view.skim.length} hunks)`);
   out.push("");
@@ -57,7 +60,7 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
   const stray = state.lineNotes.filter((n) => !placed.has(n.file));
   if (stray.length) {
     out.push("## Other notes", "");
-    for (const n of stray) out.push(`- \`${n.file}:${n.line}\` ${n.text.trim()}`);
+    for (const n of stray) out.push(`- ${on(n.pr)}\`${n.file}:${n.line}\` ${n.text.trim()}`);
     out.push("");
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
