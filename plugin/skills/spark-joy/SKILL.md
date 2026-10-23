@@ -198,6 +198,8 @@ Then:
 4. If the repo has a fast test command: `spark-joy split --check "<install && test>"`. Each PR runs in a fresh worktree, so include the install step. Fix the plan if a PR fails.
 5. Ask the user, then run `spark-joy split --apply` (or give it to them if your sandbox can't write to `.git`). It creates local branches only and leaves the working tree alone. Reply with the branch list and the path to `prs.md`. Never push.
 
+`split --apply` signs the commits when the user's git config has `commit.gpgsign` on. If it says it couldn't sign them, your sandbox can't reach their key: give the user the same command to run in their terminal. Never turn signing off to get past it.
+
 ## Stacked PRs
 
 Use it when the user wants to review PRs or MRs that are already stacked (each one's base is the branch of the one below). It needs `gh` or `glab`, logged in.

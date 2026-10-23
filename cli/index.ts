@@ -398,6 +398,7 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
         plan: result.plan,
         prefix,
         indexFile: join(p.dir, "split.index"),
+        sign: !!values.apply,
       });
       for (const pr of stack.prs)
         console.log(`${String(pr.n).padStart(2)}  ${pr.branch}  ${pr.lines} lines, ${pr.files} files  ${pr.chunk.title}`);

@@ -157,6 +157,15 @@ export interface BuildOptions {
   plan: Plan;
   prefix: string;
   indexFile: string;
+  // Sign the commits when the repo's git config asks for it.
+  sign?: boolean;
+}
+
+// `git commit-tree` never reads commit.gpgSign, so ask for -S ourselves. git
+// still picks the key and format from user.signingKey and gpg.format.
+async function wantsSigning(root: string): Promise<boolean> {
+  const out = await g.git(root, ["config", "--type=bool", "--get", "commit.gpgsign"]).catch(() => "");
+  return out.trim() === "true";
 }
 
 // Commit each PR on top of the last through a temporary index. The working
@@ -171,6 +180,7 @@ export async function buildStack(o: BuildOptions): Promise<Stack> {
   const byId = new Map(hunks.map((h) => [h.id, h]));
   const files = groupByFile(hunks);
   const env = { GIT_INDEX_FILE: o.indexFile };
+  const sign = o.sign && (await wantsSigning(root)) ? ["-S"] : [];
   await rm(o.indexFile, { force: true });
   await g.git(root, ["read-tree", meta.mergeBase], undefined, env);
 
@@ -186,7 +196,16 @@ export async function buildStack(o: BuildOptions): Promise<Stack> {
       await g.git(root, ["update-index", "-z", "--index-info"], updates.map((u) => `${u}\0`).join(""), env);
       const tree = (await g.git(root, ["write-tree"], undefined, env)).trim();
       const message = `${chunk.title}\n\n${chunk.intent}\n`;
-      const commit = (await g.git(root, ["commit-tree", tree, "-p", parent], message)).trim();
+      const commit = (
+        await g.git(root, ["commit-tree", ...sign, tree, "-p", parent], message).catch((e: { stderr?: string }) => {
+          if (!sign.length) throw e;
+          const why = e.stderr?.trim().split("\n").at(-1) || "the signing program failed";
+          throw new Error(
+            `couldn't sign the commits (commit.gpgsign is on): ${why}. No branches were created. ` +
+              "If this runs in a sandbox without your signing key, run the same command in your own terminal",
+          );
+        })
+      ).trim();
       prs.push({
         n: i + 1,
         chunk,
