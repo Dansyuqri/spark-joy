@@ -1,4 +1,4 @@
-import { isIgnorable, changedLines } from "./derive";
+import { ACROSS_PRS, changedLines, isIgnorable } from "./derive";
 import { Plan, type Hunk } from "./schema";
 
 export const CHUNK_LINE_BUDGET = 400;
@@ -100,8 +100,10 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
   } else if (stack) {
     if (plan.strategies[0]!.id !== "stack")
       error("strategies", 'stack mode starts with the "stack" strategy, one chunk per PR, as `spark-joy stack` writes it');
-    else if (plan.strategies.length === 2)
-      warn("strategies", "only one order besides whole PRs; the reviewer is meant to choose between a foundations-first and a by-feature order");
+    const ids = new Set(plan.strategies.map((s) => s.id));
+    for (const [a, b] of [["layers", "features"], ["across-layers", "across-features"]] as const)
+      if (ids.has(a) !== ids.has(b))
+        warn("strategies", `${ids.has(a) ? a : b} without ${ids.has(a) ? b : a}; the reviewer is meant to choose between a foundations-first and a by-feature order`);
   } else if (plan.strategies.length < 2)
     warn("strategies", "only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order");
   if (split && plan.skim.length) error("skim", `${plan.mode} mode has no skim; put every hunk in a ${stack ? "chunk" : "PR"}`);
@@ -120,6 +122,8 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
     // Stack mode: "stack" chunks are the PRs themselves, titled and described
     // by their authors; other strategies break each PR into chunks.
     const whole = stack && s.id === "stack";
+    // Orders across PRs may mix them in a chunk.
+    const across = stack && ACROSS_PRS.includes(s.id);
     let lastPr = -1;
     s.chunks.forEach((c, i) => {
       const cw = `${where} / chunk ${c.id}`;
@@ -156,9 +160,9 @@ export function validatePlan(raw: unknown, hunks: readonly Hunk[], budget = CHUN
         seen.set(id, c.id);
         hs.push(h);
       }
-      if (stack && !whole) {
+      if (stack && !whole && !across) {
         const prs = [...new Set(hs.map((h) => h.pr))];
-        if (prs.length > 1) error(cw, `chunk mixes PRs ${prs.join(", ")}; keep each chunk within one PR`);
+        if (prs.length > 1) error(cw, `chunk mixes PRs ${prs.join(", ")}; keep each chunk within one PR, or use across-layers and across-features to mix them`);
         else if (prs[0] !== undefined && c.pr && c.pr.number !== prs[0]) error(cw, `pr is ${c.pr.number}, but its hunks are from ${prs[0]}`);
         const at = prs.length === 1 && prs[0] !== undefined ? prOrder.get(prs[0]) : undefined;
         if (at !== undefined) {

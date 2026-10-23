@@ -966,3 +966,8 @@ td.code a.symbol:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Stack mode: which PR a file section is from, in a chunk that spans PRs. */
+.badge.pr {
+  margin-right: 6px;
+}

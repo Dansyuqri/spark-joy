@@ -225,7 +225,7 @@ describe("stack mode", () => {
     const layers = [chunk("a", ["h001"]), chunk("b", ["h002"]), chunk("c", ["h003", "h004"])];
     const r = validatePlan(stack(layers), prHunks);
     expect(r.issues.map((i) => i.message)).toEqual([
-      "only one order besides whole PRs; the reviewer is meant to choose between a foundations-first and a by-feature order",
+      "layers without features; the reviewer is meant to choose between a foundations-first and a by-feature order",
     ]);
     const both = stack(layers);
     both.strategies = [...both.strategies, { id: "features", chunks: [chunk("x", ["h001", "h002"]), chunk("y", ["h003", "h004"])] }];
@@ -235,11 +235,20 @@ describe("stack mode", () => {
 
   it("keeps each chunk within one PR, and each PR's chunks together", () => {
     expect(errors(validatePlan(stack([chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004"])]), prHunks))).toEqual([
-      "chunk mixes PRs 1, 2; keep each chunk within one PR",
-      "chunk mixes PRs 1, 2; keep each chunk within one PR",
+      "chunk mixes PRs 1, 2; keep each chunk within one PR, or use across-layers and across-features to mix them",
+      "chunk mixes PRs 1, 2; keep each chunk within one PR, or use across-layers and across-features to mix them",
     ]);
     expect(errors(validatePlan(stack([chunk("a", ["h001"]), chunk("c", ["h003", "h004"]), chunk("b", ["h002"])]), prHunks))).toEqual([
       "chunk of PR 1 comes after a later PR's chunk; keep each PR's chunks together, bottom PR first",
+    ]);
+  });
+
+  it("lets orders across PRs mix them in a chunk", () => {
+    const across = (id: string) => ({ id, chunks: [chunk("a", ["h001", "h003"]), chunk("b", ["h002", "h004"])] });
+    const both = { mode: "stack", strategies: [whole, across("across-layers"), across("across-features")], features: stack([]).features };
+    expect(validatePlan(both, prHunks).issues).toEqual([]);
+    expect(warnings(validatePlan({ ...both, strategies: [whole, across("across-layers")] }, prHunks))).toEqual([
+      "across-layers without across-features; the reviewer is meant to choose between a foundations-first and a by-feature order",
     ]);
   });
 
