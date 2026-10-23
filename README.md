@@ -112,7 +112,7 @@ Writing the big PR yourself? Ask your agent to "split my changes into smaller PR
 1. **Extract** what you want to split: `--staged`, `--uncommitted`, or a base branch for the whole branch.
 2. **Plan.** The agent groups every change into ordered PRs: each must build on the ones before, and lockfiles go with the change that needs them. Preview the stack in the app; the Map shows how the PRs depend on each other.
 3. **Check.** `split` builds the PRs and confirms the last one matches your changes exactly. `--check` runs your tests on each PR in a temporary worktree.
-4. **Apply.** `split --apply` creates the local branches and writes each PR's title and description to `prs.md`. Nothing is pushed.
+4. **Apply.** `split --apply` creates the local branches and writes each PR's title and description to `prs.md`. Nothing is pushed. The commits are signed if your git config has `commit.gpgsign` on.
 
 ```sh
 spark-joy extract --uncommitted                 # or --staged, or a base for the whole branch
