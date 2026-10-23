@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { branchName, defaultPrefix, groupedByPr, hunkStatus, prChunk, strategyLabel, strategyView, unitName } from "../../shared/derive";
+import { runKind } from "../../shared/run";
 import type { Plan, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref, type Update } from "../App";
@@ -89,7 +90,7 @@ export function PlanPage({ data, plan, state, update }: Props) {
               </button>
               {plan.mode === "stack" && plan.strategies.length === 1 && (
                 <p className="hint">
-                  {data.meta.stack?.related ? `To group the ${unit}s' changes by foundations and by feature` : `To break the ${unit}s into chunks`}, ask
+                  {runKind(data.meta) === "related" ? `To group the ${unit}s' changes by foundations and by feature` : `To break the ${unit}s into chunks`}, ask
                   your agent <q>/spark-joy break up {data.meta.run}</q>. The new orders show up here when you come back to this tab.
                 </p>
               )}

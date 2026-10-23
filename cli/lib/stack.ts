@@ -3,6 +3,7 @@ import { lstat, readFile, readlink, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { branchName, changedLines } from "../../shared/derive";
+import { policy, sourceOf } from "../../shared/run";
 import type { Chunk, Hunk, Meta, Plan } from "../../shared/schema";
 import * as g from "./git";
 
@@ -101,10 +102,10 @@ async function treeEntry(root: string, rev: string, path: string): Promise<Entry
 
 // Where the file ends up: HEAD, the index, or the working tree.
 async function targetEntry(root: string, meta: Meta, path: string): Promise<Entry> {
-  const source = meta.source ?? (meta.working ? "working" : "pr");
+  const { end } = policy(meta);
   let e: Entry | undefined;
-  if (source === "pr") e = await treeEntry(root, meta.headSha, path);
-  else if (source === "staged") {
+  if (end === "head") e = await treeEntry(root, meta.headSha, path);
+  else if (end === "index") {
     const m = /^(\d+) ([0-9a-f]+) 0\t/.exec(await g.git(root, ["ls-files", "-s", "-z", "--", path]));
     if (m) e = { mode: m[1]!, sha: m[2]! };
   } else {
@@ -118,7 +119,7 @@ async function targetEntry(root: string, meta: Meta, path: string): Promise<Entr
       : (await g.git(root, ["hash-object", "-w", "--", path])).trim();
     e = { mode, sha };
   }
-  if (!e) throw new Error(`${path} is missing from the ${source} source; re-run \`spark-joy extract\``);
+  if (!e) throw new Error(`${path} is missing from the ${sourceOf(meta)} source; re-run \`spark-joy extract\``);
   return e;
 }
 
@@ -225,10 +226,10 @@ export async function buildStack(o: BuildOptions): Promise<Stack> {
 
 // The top of the stack must hold exactly the changes that were split.
 async function verify(root: string, meta: Meta, top: string): Promise<void> {
-  const source = meta.source ?? (meta.working ? "working" : "pr");
+  const { end } = policy(meta);
   let differ: string;
-  if (source === "pr" || source === "staged") {
-    const want = source === "pr" ? `${meta.headSha}^{tree}` : (await g.git(root, ["write-tree"])).trim();
+  if (end === "head" || end === "index") {
+    const want = end === "head" ? `${meta.headSha}^{tree}` : (await g.git(root, ["write-tree"])).trim();
     differ = await g.git(root, ["diff", "--name-only", "--no-ext-diff", "--no-textconv", `${top}^{tree}`, want]);
   } else differ = await g.git(root, ["diff", "--name-only", "--no-ext-diff", "--no-textconv", top]);
   const files = differ.split("\n").filter(Boolean);
@@ -282,7 +283,7 @@ export async function checkStack(root: string, stack: Stack, cmd: string, tmp: s
 }
 
 export function prsMarkdown(meta: Meta, stack: Stack): string {
-  const target = meta.source === "staged" || meta.source === "uncommitted" ? meta.branch : meta.base.replace(/^origin\//, "");
+  const target = policy(meta).fromHead ? meta.branch : meta.base.replace(/^origin\//, "");
   const out: string[] = [];
   stack.prs.forEach((pr, i) => {
     const c = pr.chunk;

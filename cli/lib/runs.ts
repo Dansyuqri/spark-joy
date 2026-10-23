@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AutoLink, Hunk, Meta, ReviewState, emptyState } from "../../shared/schema";
+import { validatePlan, type ValidationResult } from "../../shared/validate";
 import { z } from "zod";
 
 export const RUNS_DIR = ".spark-joy";
@@ -105,4 +106,11 @@ export async function readLinks(p: RunPaths): Promise<AutoLink[]> {
 export async function readState(p: RunPaths): Promise<ReviewState> {
   if (!(await exists(p.state))) return emptyState();
   return ReviewState.parse(await readJson(p.state));
+}
+
+// The hunks, and plan.json checked against them; no result when there's no plan yet.
+export async function readCheckedPlan(p: RunPaths): Promise<{ hunks: Hunk[]; result?: ValidationResult }> {
+  const raw = await readPlanRaw(p);
+  const hunks = await readHunks(p);
+  return { hunks, result: raw === undefined ? undefined : validatePlan(raw, hunks) };
 }

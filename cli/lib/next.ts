@@ -1,7 +1,8 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { validatePlan } from "../../shared/validate";
-import type { Hunk, Meta, ReviewState } from "../../shared/schema";
+import { forgeOf, policy, runKind } from "../../shared/run";
+import type { Hunk, Meta, Plan, ReviewState } from "../../shared/schema";
 import { prName } from "./forge";
 import { readHunks, readJson, readMeta, readPlanRaw, readState, type RunPaths } from "./runs";
 
@@ -34,6 +35,23 @@ export function bigPrs(meta: Meta, hunks: readonly Hunk[]): { number: number; li
     .map((p) => ({ number: p.number, lines: hunks.filter((h) => h.pr === p.number).reduce((n, h) => n + h.added + h.removed, 0) }))
     .filter((p) => p.lines > BREAK_UP_OVER);
 }
+
+// After the review app: build the split, or deal with the notes.
+export function afterServe(p: RunPaths, meta: Meta, mode: Plan["mode"] | undefined): Step {
+  const run = `--run ${p.name}`;
+  if (mode === "split") return { cmd: `split ${run}`, why: "after previewing" };
+  return policy(meta).postable ? { cmd: `comments --post ${run}`, why: "after leaving notes" } : { cmd: `export ${run}`, why: "after reviewing" };
+}
+
+// Once there are notes: post them to the PRs they're on, or export them.
+export function afterNotes(p: RunPaths, meta: Meta): Step[] {
+  const run = `--run ${p.name}`;
+  const keep = { cmd: `serve ${run}`, why: "keep reviewing" };
+  return policy(meta).postable ? [{ cmd: `comments --post ${run}`, why: "a pending review only you see" }, keep] : [{ cmd: `export ${run}` }, keep];
+}
+
+// After writing the notes out: post them.
+export const afterComments = (p: RunPaths, meta: Meta): Step[] => (policy(meta).postable ? [{ cmd: `comments --post --run ${p.name}` }] : []);
 
 export interface Status {
   lines: string[];
@@ -71,22 +89,16 @@ export async function runStatus(p: RunPaths): Promise<Status> {
   const notes = hasNotes(state);
   const posted = (await exists(postedPath(p))) ? ((await readJson(postedPath(p))) as { at: string; prs: number[] }) : undefined;
   if (posted) {
-    const forge = meta.stack?.forge ?? "github";
+    const forge = forgeOf(meta);
     lines.push(`notes posted ${posted.at.slice(0, 16).replace("T", " ")} to ${posted.prs.map((n) => prName(forge, n)).join(", ")}, pending until you submit`);
     return { lines, next: [] };
   }
   if (notes) {
     lines.push(`${state.lineNotes.filter((n) => n.text.trim()).length} line note(s), ${Object.values(state.chunkNotes).filter((n) => n.trim()).length} chunk note(s)`);
-    const forgeable = meta.source === "stack" || meta.source === "pr" || meta.source === undefined;
-    return {
-      lines,
-      next: forgeable
-        ? [{ cmd: `comments --post ${run}`, why: "a pending review only you see" }, { cmd: `serve ${run}`, why: "keep reviewing" }]
-        : [{ cmd: `export ${run}` }, { cmd: `serve ${run}`, why: "keep reviewing" }],
-    };
+    return { lines, next: afterNotes(p, meta) };
   }
   // Related PRs are read best across PRs: their foundations first, or one feature at a time.
-  if (meta.stack?.related && meta.stack.prs.length > 1 && !brokenUp)
+  if (runKind(meta) === "related" && meta.stack!.prs.length > 1 && !brokenUp)
     return {
       lines,
       next: [
@@ -95,7 +107,7 @@ export async function runStatus(p: RunPaths): Promise<Status> {
       ],
     };
   if (big.length && !brokenUp) {
-    const forge = meta.stack!.forge;
+    const forge = forgeOf(meta);
     const which = big.map((b) => `${prName(forge, b.number)} is ${b.lines} lines`).join(", ");
     return {
       lines,

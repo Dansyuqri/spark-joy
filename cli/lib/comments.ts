@@ -1,5 +1,7 @@
 import { chunkNoteKey, notesInHunks, numberLines } from "../../shared/derive";
-import { prName } from "./forge";
+import { prName, type ForgeKind } from "./forge";
+import type { PostTarget } from "./post";
+import { policy, runKind, sourceOf } from "../../shared/run";
 import type { Hunk, LineNote, Meta, Plan, ReviewState } from "../../shared/schema";
 
 export interface ReviewComment {
@@ -78,7 +80,7 @@ function chunkNotes(plan: Plan, state: ReviewState) {
 // agent: line notes on diff lines go inline; chunk notes and notes on lines
 // outside the diff go in the review body.
 function collect(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: ReviewState): Collected {
-  const source = meta.source ?? (meta.working ? "working" : "pr");
+  const source = sourceOf(meta);
   if (source === "stack") throw new Error("this run is stacked PRs; use stackReviews or stackDraftNotes");
   if (source !== "pr") throw new Error(`this run is ${source} changes, not a PR; comments need \`spark-joy extract [base]\``);
   const { placed, stray } = place(hunks, state.lineNotes.filter((n) => n.text.trim()));
@@ -104,7 +106,7 @@ export interface StackTarget {
 // order that spans PRs goes to the highest one, naming the others.
 function collectStack(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: ReviewState) {
   const stack = meta.stack;
-  if (meta.source !== "stack" || !stack?.prs.length) throw new Error("this run is not a stack of PRs");
+  if (!policy(meta).existingPrs || !stack?.prs.length) throw new Error("this run is not a stack of PRs");
   const name = (n: number) => prName(stack.forge, n);
   const prs = stack.prs;
   const top = prs.at(-1)!;
@@ -134,7 +136,7 @@ function collectStack(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: Rev
     // A PR that doesn't target the one below was diffed against it anyway, so
     // its line numbers aren't the forge's; keep its notes out of the diff.
     // Related PRs are each diffed against what they target.
-    const chained = stack.related || !below || p.base === below.head;
+    const chained = runKind(meta) === "related" || !below || p.base === below.head;
     const { placed, stray } = chained
       ? place(hunks.filter((h) => h.pr === p.number), mine.map((n) => ({ ...n, pr: p.number })))
       : { placed: [], stray: mine };
@@ -194,3 +196,45 @@ export function stackDraftNotes(meta: Meta, hunks: readonly Hunk[], plan: Plan, 
     notes: gitlabNotes({ base: target.mergeBase, start: target.start, head: target.headSha }, collected),
   }));
 }
+
+// Each PR's notes, and where they go when posted. A run of one PR gives one
+// target, numbered 0 until the PR to post to is known.
+export interface CommentTarget extends PostTarget {
+  url?: string;
+  inline: number;
+  general: boolean;
+}
+
+export function commentTargets(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: ReviewState, forge: ForgeKind): CommentTarget[] {
+  if (policy(meta).existingPrs)
+    return forge === "gitlab"
+      ? stackDraftNotes(meta, hunks, plan, state).map(({ pr, notes }) => ({
+          number: pr.number,
+          url: pr.url,
+          headSha: pr.headSha,
+          base: pr.mergeBase,
+          start: pr.start,
+          body: notes,
+          inline: notes.filter((n) => n.position).length,
+          general: notes.some((n) => !n.position),
+        }))
+      : stackReviews(meta, hunks, plan, state).map(({ pr, review }) => ({
+          number: pr.number,
+          url: pr.url,
+          headSha: pr.headSha,
+          base: pr.mergeBase,
+          start: pr.start,
+          body: review,
+          inline: review.comments.length,
+          general: !!review.body,
+        }));
+  const body: ReviewPayload | DraftNote[] =
+    forge === "gitlab" ? gitlabDraftNotes(meta, hunks, plan, state) : reviewPayload(meta, hunks, plan, state);
+  const inline = Array.isArray(body) ? body.filter((n) => n.position).length : body.comments.length;
+  const general = Array.isArray(body) ? body.length > inline : !!body.body;
+  return inline || general ? [{ number: 0, headSha: meta.headSha, base: meta.mergeBase, start: meta.baseSha, body, inline, general }] : [];
+}
+
+// "2 inline comment(s), plus notes in the review body on abc1234"
+export const describeTarget = (t: CommentTarget, forge: ForgeKind): string =>
+  `${t.inline} inline comment(s)${t.general ? `, plus notes in the ${forge === "gitlab" ? "first draft note" : "review body"}` : ""} on ${t.headSha.slice(0, 7)}`;
