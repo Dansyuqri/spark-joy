@@ -11,21 +11,59 @@
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
 </p>
 
-AI-written PRs are often thousands of lines long: too big to review properly. spark-joy has your coding agent split a PR into small, ordered chunks, then opens a local app where you review them one at a time, see how they connect on a map, and finish with a summary of what the PR does.
+AI-written PRs are often thousands of lines long: too big to review properly. spark-joy has your coding agent break a big PR into small, ordered pieces, then opens a local app where you review them one at a time.
+
+Works from plain git, so GitHub, GitLab or anything else. Nothing is posted unless you ask.
+
+Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
+
+## Key features
+
+### Split a large PR into smaller PRs
+
+Ask your agent to "split my changes into smaller PRs". It turns your staged changes, uncommitted changes or whole branch into a stack of small PRs, each built on the one before. You preview the stack in the app, optionally run your tests on every PR, then get local branches with a title and description for each. Your working tree is never touched and nothing is pushed.
+
+<p align="center"><img src="assets/split.gif" width="800" alt="Extracting uncommitted changes, previewing five stacked PRs in the app, checking each PR's tests, then creating the branches"></p>
+
+More in [Split your own changes](#split-your-own-changes).
+
+### Review a large PR by foundations or by feature
+
+Ask your agent to "review this PR in chunks". It groups the diff into chunks of 100–300 lines, in two review orders:
+
+- **Foundations first** goes types → logic → callers → tests.
+- **By feature** follows one capability at a time, end to end.
+
+Pick one and switch later without losing progress. Every change lands in exactly one chunk, and spark-joy checks that nothing is missing or reviewed twice. Stacked and related PRs can be broken up the same way.
 
 **Example:** spark-joy's own history, one 7.8k-line diff, became **18 chunks of 141–369 lines**, every hunk placed exactly once. The 2.7k-line lockfile went straight to *skim*.
 
 <p align="center"><img src="assets/demo.gif" width="800" alt="Choosing a review order, reviewing a chunk with a line note, then zooming into a chunk on the map"></p>
 
-Reviewing a stack of PRs someone already opened? spark-joy loads them straight from GitHub or GitLab. See [Review stacked PRs](#review-stacked-prs).
+More in [Use](#use).
 
-PRs that belong together but aren't stacked? Add a "Relates to #12" line to a description (or run `spark-joy link`) and review them all in one view. See [Review related PRs](#review-related-prs).
+### Review linked PRs together
 
-Writing the big PR yourself? spark-joy can also split your staged, uncommitted or branch changes into small stacked PRs. See [Split your own changes](#split-your-own-changes).
+Some changes span PRs: an API and the client that uses it, or a fix and its follow-up. Add a "Relates to #12" line to a description (or run `spark-joy link`) and `spark-joy related` loads every linked PR into one view, one chunk per PR, each diffed against what it targets. **Across PRs** shows a file in each PR that touches it, and your notes post back to the PR they were left on.
 
-Works from plain git, so GitHub, GitLab or anything else. Nothing is posted unless you ask; notes export as markdown, or go to the PR as a pending review.
+<p align="center"><img src="assets/related.gif" width="800" alt="Loading three related PRs, reviewing one that builds on another, then viewing a file across the PRs"></p>
 
-Inspired by [mr-cast](https://github.com/phanshiyu/mr-cast).
+More in [Review related PRs](#review-related-prs).
+
+## Additional features
+
+- **Stacked PRs.** Load a stack someone already opened on GitHub or GitLab and review it PR by PR. See [Review stacked PRs](#review-stacked-prs).
+- **Across chunks / Across PRs.** See one file's diff in every chunk or PR side by side, in order.
+- **Map.** Chunks as a graph. Click one to see how its files' diffs link; click a file to review it.
+- **Summary.** A *What this PR does* list ties each feature to the chunks that implement it and shows how much of each has been reviewed. Export it all as `review.md`.
+- **Post your notes.** Line and chunk notes go to the PR as a pending review (GitHub) or draft notes (GitLab) that only you see until you submit.
+- **Mechanical changes are separated.** Lockfiles, generated files, binaries, renames and whitespace-only changes go into a collapsed *skim* section.
+- **Risk is agreed, not guessed.** Before labelling anything, the agent proposes what counts as high and medium risk for your repo and waits for you to confirm. The rubric is saved in `.spark-joy.md` at the repo root; commit it to share it with your team.
+- **Progress survives new commits.** Review state is stored by hunk content, so after a push you re-extract and only new or changed hunks need another look.
+- **Linked code.** Under each file, **Uses** and **Used by** list the other changed files it's linked to; click an underlined name to jump to its definition.
+- **Agent or terminal.** Your agent can drive every step, or run any `spark-joy` command yourself. See [Agent or terminal](#agent-or-terminal).
+- **Signed commits.** Split branches are signed if your git config has `commit.gpgsign` on.
+- **Any agent.** An [Agent Skill](https://agentskills.io) plus a CLI, so it works with Claude Code, Codex, Gemini CLI, Cursor, OpenCode and others.
 
 ## How it works
 
@@ -37,13 +75,7 @@ spark-joy serve     →  review app    choose an order, review chunk by chunk, e
 ```
 
 - **The agent never copies code into the plan.** It refers to hunks by id, and `validate` checks that no change is missing or reviewed twice.
-- **Two review orders.** *Foundations first* goes types → logic → callers → tests. *By feature* follows one capability at a time, end to end. You pick one, and can switch later without losing progress.
-- **Mechanical changes are separated.** Lockfiles, generated files, binaries, renames and whitespace-only changes go into a collapsed *skim* section.
 - **Chunks stay small.** The target is 100–300 changed lines and validation warns above 400. Large hunks are split at function boundaries so they can go into different chunks.
-- **Progress survives new commits.** Review state is stored by hunk content, so after a push you re-extract and only new or changed hunks need another look.
-- **Risk is agreed, not guessed.** Before labelling anything, the agent proposes what counts as high and medium risk for your repo and waits for you to confirm. The rubric is saved in `.spark-joy.md` at the repo root; commit it to share it with your team. Risky chunks show a label and a one-line reason.
-- **Map.** Chunks as a graph. Click one to see how its files' diffs link; click a file to review it.
-- **Summary.** A *What this PR does* list ties each feature to the chunks that implement it and shows how much of each has been reviewed.
 
 ## Install
 
