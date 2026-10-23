@@ -87,14 +87,7 @@ Your agent drives every step: ask it and it runs the commands. The only step tha
 
 Every command ends with a `next:` line saying what comes next: a command to run, or what to ask your agent. If your agent runs in a sandbox that can't start a server, write to `.git` or reach GitHub, it gives you that command to run in your terminal instead, and the `next:` line there tells you when to go back to the agent. Lost track? `spark-joy status` says where a run stands.
 
-```
-$ spark-joy stack 12
- 1  PR #12  a → main  80 lines  Add invitations table
- 2  PR #13  b → a  820 lines  Invite endpoint
-wrote .spark-joy/pr-12-stack, with a plan of one chunk per PR
-next: ask your agent "/spark-joy break up pr-12-stack"  (PR #13 is 820 lines)
-  or: spark-joy serve --run pr-12-stack  (review whole PRs)
-```
+<p align="center"><img src="assets/agent-cli.gif" width="800" alt="A sandboxed agent hands over spark-joy stack 13; the CLI says to ask the agent to break up a 522-line PR; the agent plans and hands over serve; the CLI posts the notes and status shows they are pending"></p>
 
 ### Commands
 
