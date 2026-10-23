@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { forgeOf, runKind, type Source } from "../../shared/run";
 import { Plan, type Hunk, type HunkFlag, type Meta } from "../../shared/schema";
 import { parseDiff, type FileDiff, type RawHunk } from "./diff";
 import { fileFlags, hasGeneratedMarker, whitespaceOnly } from "./classify";
@@ -73,7 +74,7 @@ export function buildHunks(files: FileDiff[], attrGenerated: ReadonlySet<string>
   return hunks;
 }
 
-export type Source = NonNullable<Meta["source"]>;
+export type { Source };
 
 export interface ExtractOptions {
   cwd: string;
@@ -171,7 +172,7 @@ function offsetIds(hunks: Hunk[], offset: number): Hunk[] {
 // So do the orders it broke the PRs up in, while `unchanged` says the hunks
 // they name are still the same.
 export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly ForgePR[], previous?: Plan, unchanged = false): Plan {
-  const forge = meta.stack?.forge ?? "github";
+  const forge = forgeOf(meta);
   const old = new Map((previous?.strategies[0]?.chunks ?? []).map((c) => [c.id, c]));
   const chunks = prs.map((p) => {
     const id = `pr-${p.number}`;
@@ -193,7 +194,7 @@ export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly Forg
   const keep = unchanged ? previous : undefined;
   return {
     mode: "stack",
-    title: chunks.length === 1 ? chunks[0]!.title : `${chunks.length} ${meta.stack?.related ? "related" : "stacked"} ${forge === "gitlab" ? "MRs" : "PRs"}`,
+    title: chunks.length === 1 ? chunks[0]!.title : `${chunks.length} ${runKind(meta) === "related" ? "related" : "stacked"} ${forge === "gitlab" ? "MRs" : "PRs"}`,
     ...(keep?.overview ? { overview: keep.overview } : {}),
     strategies: [{ id: "stack", chunks }, ...(keep?.strategies.slice(1) ?? [])],
     features: keep?.features ?? [],

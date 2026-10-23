@@ -1,3 +1,4 @@
+import { forgeOf, policy, runKind } from "./run";
 import { IGNORABLE_FLAGS, type Chunk, type Feature, type Hunk, type LineNote, type Meta, type Plan, type ReviewState, type Strategy } from "./schema";
 
 export type ChunkStatus = "done" | "partial" | "todo";
@@ -9,8 +10,11 @@ export const changedLines = (hs: readonly Hunk[]): number =>
   hs.reduce((n, h) => n + h.added + h.removed, 0);
 
 // What the diff ends at.
-export const headLabel = (meta: Meta): string =>
-  meta.stack ? `${prRef(meta, meta.stack.prs.at(-1)?.number ?? 0)} ${meta.headSha.slice(0, 8)}` : meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
+export function headLabel(meta: Meta): string {
+  const { end } = policy(meta);
+  if (end === "prs") return `${prRef(meta, meta.stack?.prs.at(-1)?.number ?? 0)} ${meta.headSha.slice(0, 8)}`;
+  return end === "index" ? "index" : end === "worktree" ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
+}
 
 const branchSlug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "pr";
@@ -33,14 +37,14 @@ export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ??
 // What a chunk is called: "MR" for a GitLab stack, "PR" for any other stack or
 // a split, otherwise "chunk".
 export const unitName = (plan: Plan, meta: Meta): string =>
-  plan.mode === "review" ? "chunk" : meta.stack?.forge === "gitlab" ? "MR" : "PR";
+  plan.mode === "review" ? "chunk" : forgeOf(meta) === "gitlab" ? "MR" : "PR";
 
 // "#12" on GitHub, "!12" on GitLab.
-export const prRef = (meta: Meta, n: number): string => `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`;
+export const prRef = (meta: Meta, n: number): string => `${forgeOf(meta) === "gitlab" ? "!" : "#"}${n}`;
 
 // Related PRs: what a PR is diffed against, e.g. "targets main" or "builds on #12".
 export function prTarget(meta: Meta, n: number | undefined): string | undefined {
-  const prs = meta.stack?.related ? meta.stack.prs : [];
+  const prs = runKind(meta) === "related" ? meta.stack!.prs : [];
   const p = prs.find((x) => x.number === n);
   if (!p) return undefined;
   const parent = prs.find((x) => x.head === p.base && x !== p);

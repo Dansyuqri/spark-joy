@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { policy } from "../../shared/run";
 import type { Meta } from "../../shared/schema";
 
 const exec = promisify(execFile);
@@ -88,17 +89,17 @@ export async function generatedByAttr(cwd: string, files: string[]): Promise<Set
 // A changed file as of the diff's end: HEAD, the index, or the working tree.
 // For a stack, the head of PR `pr` (the top PR when not given).
 export async function fileText(root: string, meta: Meta, path: string, pr?: number): Promise<string> {
-  const source = meta.source ?? (meta.working ? "working" : "pr");
-  if (source === "stack") {
+  const { end } = policy(meta);
+  if (end === "prs") {
     const prs = meta.stack?.prs ?? [];
     const at = pr === undefined ? prs.at(-1) : prs.find((p) => p.number === pr);
     if (!at) throw new Error(`no PR ${pr} in this stack`);
     return git(root, ["show", `${at.headSha}:${path}`]);
   }
-  if (source === "working" || source === "uncommitted") {
+  if (end === "worktree") {
     // Never follow a symlink out of the repo.
     if ((await lstat(join(root, path))).isSymbolicLink()) throw new Error(`${path} is a symlink`);
     return readFile(join(root, path), "utf8");
   }
-  return git(root, ["show", `${source === "staged" ? "" : meta.headSha}:${path}`]);
+  return git(root, ["show", `${end === "index" ? "" : meta.headSha}:${path}`]);
 }

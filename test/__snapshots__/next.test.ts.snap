@@ -1,0 +1,460 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`a PR run > goes from extract to posted notes 1`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "wrote .spark-joy/feature",
+  "no risk rubric yet",
+  "next: ask your agent "/spark-joy plan feature"",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 2`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "no plan yet",
+  "next: ask your agent "/spark-joy plan feature"",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 3`] = `
+[
+  "warn   risk: no risk rubric; agree one with the user and write .spark-joy.md",
+  "plan ok (1 warning)",
+  "next: spark-joy serve --run feature",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 4`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: layers (3), features (1)",
+  "next: spark-joy serve --run feature",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 5`] = `
+[
+  "spark-joy reviewing feature at <url>  (Ctrl+C to stop)",
+  "next: spark-joy comments --post --run feature  (after leaving notes)",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 6`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: layers (3), features (1)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy comments --post --run feature  (a pending review only you see)
+  or: spark-joy serve --run feature  (keep reviewing)",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 7`] = `
+[
+  "1 inline comment(s), plus notes in the review body on <sha>",
+  "wrote .spark-joy/feature/comments.json",
+  "next: spark-joy comments --post --run feature",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 8`] = `
+[
+  "1 inline comment(s), plus notes in the first draft note on <sha>",
+  "wrote .spark-joy/feature/comments.json",
+  "next: spark-joy comments --post --run feature",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 9`] = `
+[
+  "{
+  "commit_id": "<sha>",
+  "body": "**Core**\\n\\nLooks fine",
+  "comments": [
+    {
+      "path": "docs/guide.md",
+      "line": 1,
+      "side": "RIGHT",
+      "body": "Hm"
+    }
+  ]
+}",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 10`] = `
+[
+  "PR #7  posted 2 pending comment(s)  https://github.com/o/r/pull/7",
+  "only you see them until you submit your review on GitHub",
+]
+`;
+
+exports[`a PR run > goes from extract to posted notes 11`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: layers (3), features (1)",
+  "notes posted <time> to PR #7, pending until you submit",
+]
+`;
+
+exports[`a PR run > treats a run from before \`source\` existed as a PR 1`] = `
+[
+  "spark-joy reviewing feature at <url>  (Ctrl+C to stop)",
+  "next: spark-joy comments --post --run feature  (after leaving notes)",
+]
+`;
+
+exports[`a PR run > treats a run from before \`source\` existed as a PR 2`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: layers (3), features (1)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy comments --post --run feature  (a pending review only you see)
+  or: spark-joy serve --run feature  (keep reviewing)",
+]
+`;
+
+exports[`a PR run > treats a run from before \`source\` existed as a PR 3`] = `
+[
+  "1 inline comment(s), plus notes in the review body on <sha>",
+  "wrote .spark-joy/feature/comments.json",
+  "next: spark-joy comments --post --run feature",
+]
+`;
+
+exports[`a run of local changes > exports staged changes instead of posting them 1`] = `
+[
+  "run staged: HEAD (<sha>) → index on feature
+1 files, 1 hunks, +1 −3",
+  "wrote .spark-joy/staged",
+  "no risk rubric yet",
+  "next: ask your agent "/spark-joy plan staged"",
+]
+`;
+
+exports[`a run of local changes > exports staged changes instead of posting them 2`] = `
+[
+  "warn   strategies: only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order",
+  "plan ok (1 warning)",
+  "next: spark-joy serve --run staged",
+]
+`;
+
+exports[`a run of local changes > exports staged changes instead of posting them 3`] = `
+[
+  "spark-joy reviewing staged at <url>  (Ctrl+C to stop)",
+  "next: spark-joy export --run staged  (after reviewing)",
+]
+`;
+
+exports[`a run of local changes > exports staged changes instead of posting them 4`] = `
+[
+  "run staged: HEAD (<sha>) → index on feature
+1 files, 1 hunks, +1 −3",
+  "plan ok: layers (1)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy export --run staged
+  or: spark-joy serve --run staged  (keep reviewing)",
+]
+`;
+
+exports[`a run of local changes > exports uncommitted changes instead of posting them 1`] = `
+[
+  "run uncommitted: HEAD (<sha>) → working tree on feature
+1 files, 1 hunks, +1 −3",
+  "wrote .spark-joy/uncommitted",
+  "no risk rubric yet",
+  "next: ask your agent "/spark-joy plan uncommitted"",
+]
+`;
+
+exports[`a run of local changes > exports uncommitted changes instead of posting them 2`] = `
+[
+  "warn   strategies: only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order",
+  "plan ok (1 warning)",
+  "next: spark-joy serve --run uncommitted",
+]
+`;
+
+exports[`a run of local changes > exports uncommitted changes instead of posting them 3`] = `
+[
+  "spark-joy reviewing uncommitted at <url>  (Ctrl+C to stop)",
+  "next: spark-joy export --run uncommitted  (after reviewing)",
+]
+`;
+
+exports[`a run of local changes > exports uncommitted changes instead of posting them 4`] = `
+[
+  "run uncommitted: HEAD (<sha>) → working tree on feature
+1 files, 1 hunks, +1 −3",
+  "plan ok: layers (1)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy export --run uncommitted
+  or: spark-joy serve --run uncommitted  (keep reviewing)",
+]
+`;
+
+exports[`a run of local changes > exports working changes instead of posting them 1`] = `
+[
+  "run working: main (<sha>) → working tree on feature
+9 files, 13 hunks, +326 −7",
+  "wrote .spark-joy/working",
+  "no risk rubric yet",
+  "next: ask your agent "/spark-joy plan working"",
+]
+`;
+
+exports[`a run of local changes > exports working changes instead of posting them 2`] = `
+[
+  "warn   strategies: only one strategy; the reviewer is meant to choose between a foundations-first and a by-feature order",
+  "plan ok (1 warning)",
+  "next: spark-joy serve --run working",
+]
+`;
+
+exports[`a run of local changes > exports working changes instead of posting them 3`] = `
+[
+  "spark-joy reviewing working at <url>  (Ctrl+C to stop)",
+  "next: spark-joy export --run working  (after reviewing)",
+]
+`;
+
+exports[`a run of local changes > exports working changes instead of posting them 4`] = `
+[
+  "run working: main (<sha>) → working tree on feature
+9 files, 13 hunks, +326 −7",
+  "plan ok: layers (1)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy export --run working
+  or: spark-joy serve --run working  (keep reviewing)",
+]
+`;
+
+exports[`a split run > goes from plan to branches 1`] = `
+[
+  "plan ok (0 warnings)",
+  "next: spark-joy split --run feature  (dry run)
+  or: spark-joy serve --run feature  (preview the PRs)",
+]
+`;
+
+exports[`a split run > goes from plan to branches 2`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: split (1)",
+  "next: spark-joy split --run feature  (dry run)
+  or: spark-joy serve --run feature  (preview the PRs)",
+]
+`;
+
+exports[`a split run > goes from plan to branches 3`] = `
+[
+  "spark-joy reviewing feature at <url>  (Ctrl+C to stop)",
+  "next: spark-joy split --run feature  (after previewing)",
+]
+`;
+
+exports[`a split run > goes from plan to branches 4`] = `
+[
+  " 1  feature-split/1-everything  335 lines, 9 files  Everything",
+  "1 PRs; the last one matches your changes exactly",
+  "wrote .spark-joy/feature/prs.md
+nothing created yet",
+  "next: spark-joy split --apply --run feature  (creates local branches, never pushes)",
+]
+`;
+
+exports[`a split run > goes from plan to branches 5`] = `
+[
+  "run feature: main (<sha>) → HEAD <sha> on feature
+9 files, 13 hunks, +328 −7",
+  "plan ok: split (1)",
+  "split checked; prs.md written",
+  "next: spark-joy split --apply --run feature  (creates local branches, never pushes)",
+]
+`;
+
+exports[`a stack run > asks for related PRs to be broken up 1`] = `
+[
+  "run pr-3-related: origin/main (<sha>) → #1 <sha> on a
+2 files, 3 hunks, +3 −2",
+  "plan ok: stack (3)",
+  "next: ask your agent "/spark-joy break up pr-3-related"  (groups the PRs' changes by foundations and by feature)
+  or: spark-joy serve --run pr-3-related  (review whole PRs)",
+]
+`;
+
+exports[`a stack run > asks for related PRs to be broken up 2`] = `
+[
+  "spark-joy reviewing pr-3-related at <url>  (Ctrl+C to stop)",
+  "next: spark-joy comments --post --run pr-3-related  (after leaving notes)",
+]
+`;
+
+exports[`a stack run > asks for related PRs to be broken up 3`] = `
+[
+  "run pr-3-related: origin/main (<sha>) → #1 <sha> on a
+2 files, 3 hunks, +3 −2",
+  "plan ok: stack (3)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy comments --post --run pr-3-related  (a pending review only you see)
+  or: spark-joy serve --run pr-3-related  (keep reviewing)",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 1`] = `
+[
+  "run pr-1-stack: origin/main (<sha>) → #3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "next: spark-joy serve --run pr-1-stack",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 2`] = `
+[
+  "spark-joy reviewing pr-1-stack at <url>  (Ctrl+C to stop)",
+  "next: spark-joy comments --post --run pr-1-stack  (after leaving notes)",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 3`] = `
+[
+  "run pr-1-stack: origin/main (<sha>) → #3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy comments --post --run pr-1-stack  (a pending review only you see)
+  or: spark-joy serve --run pr-1-stack  (keep reviewing)",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 4`] = `
+[
+  "PR #2  1 inline comment(s) on <sha>  wrote .spark-joy/pr-1-stack/comments-2.json",
+  "next: spark-joy comments --post --run pr-1-stack",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 5`] = `
+[
+  "[
+  {
+    "number": 2,
+    "url": "https://github.com/o/r/pull/2",
+    "review": {
+      "commit_id": "<sha>",
+      "body": "",
+      "comments": [
+        {
+          "path": "src/app.ts",
+          "line": 3,
+          "side": "RIGHT",
+          "body": "Hm"
+        }
+      ]
+    }
+  }
+]",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 6`] = `
+[
+  "PR #2  posted 1 pending comment(s)  https://github.com/o/r/pull/2",
+  "only you see them until you submit your review on GitHub",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitHub 7`] = `
+[
+  "run pr-1-stack: origin/main (<sha>) → #3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "notes posted <time> to PR #2, pending until you submit",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 1`] = `
+[
+  "run mr-1-stack: origin/main (<sha>) → !3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "next: spark-joy serve --run mr-1-stack",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 2`] = `
+[
+  "spark-joy reviewing mr-1-stack at <url>  (Ctrl+C to stop)",
+  "next: spark-joy comments --post --run mr-1-stack  (after leaving notes)",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 3`] = `
+[
+  "run mr-1-stack: origin/main (<sha>) → !3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "1 line note(s), 1 chunk note(s)",
+  "next: spark-joy comments --post --run mr-1-stack  (a pending review only you see)
+  or: spark-joy serve --run mr-1-stack  (keep reviewing)",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 4`] = `
+[
+  "MR !2  1 inline comment(s) on <sha>  wrote .spark-joy/mr-1-stack/comments-2.json",
+  "next: spark-joy comments --post --run mr-1-stack",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 5`] = `
+[
+  "[
+  {
+    "number": 2,
+    "url": "https://github.com/o/r/pull/2",
+    "notes": [
+      {
+        "note": "Hm",
+        "position": {
+          "position_type": "text",
+          "base_sha": "<sha>",
+          "start_sha": "<sha>",
+          "head_sha": "<sha>",
+          "old_path": "src/app.ts",
+          "new_path": "src/app.ts",
+          "old_line": 3,
+          "new_line": 3
+        }
+      }
+    ]
+  }
+]",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 6`] = `
+[
+  "MR !2  posted 1 pending draft note(s)  https://github.com/o/r/pull/2",
+  "only you see them until you submit your review on GitLab",
+]
+`;
+
+exports[`a stack run > goes from loading to posted notes on GitLab 7`] = `
+[
+  "run mr-1-stack: origin/main (<sha>) → !3 <sha> on c
+3 files, 4 hunks, +4 −2",
+  "plan ok: stack (3)",
+  "notes posted <time> to MR !2, pending until you submit",
+]
+`;

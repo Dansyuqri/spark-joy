@@ -4,18 +4,18 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
-import { RUBRIC_FILE } from "../shared/schema";
-import { validatePlan } from "../shared/validate";
-import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews, type DraftNote, type ReviewPayload } from "./lib/comments";
+import { policy } from "../shared/run";
+import { RUBRIC_FILE, type Plan } from "../shared/schema";
+import { commentTargets, describeTarget } from "./lib/comments";
 import { extract, extractStack } from "./lib/extract";
 import { cliForge, parsePrArg, parseRelated, parseRemote, prName, relatedLine, type Forge, type ForgeKind, type Remote } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
-import { formatNext, postedPath, runStatus, type Step } from "./lib/next";
-import { postNotes, type PostTarget } from "./lib/post";
-import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath, writeJson, type RunPaths } from "./lib/runs";
-import { formatRubric, readRubric } from "./lib/rubric";
+import { afterComments, afterServe, formatNext, postedPath, runStatus, type Step } from "./lib/next";
+import { postNotes } from "./lib/post";
+import { readCheckedPlan, readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath, writeJson, type RunPaths } from "./lib/runs";
+import { formatRubric, readRubric, rubricIssues } from "./lib/rubric";
 import { serve } from "./lib/server";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
 
@@ -257,12 +257,9 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
 
     case "validate": {
       const p = await run(cwd, values.run);
-      const raw = await readPlanRaw(p);
-      if (raw === undefined) throw new Error(`no plan yet; write ${p.plan}`);
-      const result = validatePlan(raw, await readHunks(p));
-      const risky = result.plan?.strategies.some((s) => s.chunks.some((c) => c.risk !== "low"));
-      if (risky && !(await readRubric(await g.repoRoot(cwd))))
-        result.issues.push({ level: "warning", where: "risk", message: `no risk rubric; agree one with the user and write ${RUBRIC_FILE}` });
+      const { result } = await readCheckedPlan(p);
+      if (!result) throw new Error(`no plan yet; write ${p.plan}`);
+      result.issues.push(...rubricIssues(result.plan, await readRubric(await g.repoRoot(cwd))));
       if (values.json) {
         console.log(JSON.stringify({ ok: result.ok, issues: result.issues }, null, 2));
       } else {
@@ -281,15 +278,8 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
       const s = await serve({ paths: p, appDir: join(PKG_ROOT, "dist", "app"), port });
       console.log(`spark-joy reviewing ${p.name} at ${s.url}  (Ctrl+C to stop)`);
       const plan = await readPlanRaw(p).catch(() => undefined);
-      const mode = (plan as { mode?: string } | undefined)?.mode;
-      const source = (await readMeta(p)).source;
-      const after: Step =
-        mode === "split"
-          ? { cmd: `split --run ${p.name}`, why: "after previewing" }
-          : !source || source === "pr" || source === "stack"
-            ? { cmd: `comments --post --run ${p.name}`, why: "after leaving notes" }
-            : { cmd: `export --run ${p.name}`, why: "after reviewing" };
-      console.log(formatNext([after]));
+      const mode = (plan as { mode?: Plan["mode"] } | undefined)?.mode;
+      console.log(formatNext([afterServe(p, await readMeta(p), mode)]));
       await new Promise<void>((resolve) => process.once("SIGINT", resolve));
       await s.close();
       return 0;
@@ -297,9 +287,7 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
 
     case "export": {
       const p = await run(cwd, values.run);
-      const raw = await readPlanRaw(p);
-      const hunks = await readHunks(p);
-      const result = raw === undefined ? undefined : validatePlan(raw, hunks);
+      const { hunks, result } = await readCheckedPlan(p);
       if (!result?.plan) throw new Error("no valid plan to export; run `spark-joy validate`");
       const md = exportMarkdown(await readMeta(p), hunks, result.plan, await readState(p));
       if (values.stdout) process.stdout.write(md);
@@ -312,72 +300,37 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
 
     case "comments": {
       const p = await run(cwd, values.run);
-      const raw = await readPlanRaw(p);
-      const hunks = await readHunks(p);
-      const result = raw === undefined ? undefined : validatePlan(raw, hunks);
+      const { hunks, result } = await readCheckedPlan(p);
       if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
       const meta = await readMeta(p);
       const state = await readState(p);
-      const post = `comments --post --run ${p.name}`;
+      const kind = policy(meta);
       if (values.post && !values.force && (await readFile(postedPath(p), "utf8").catch(() => undefined)))
         throw new Error("these notes were already posted; submit or delete that pending review on the forge first, then pass --force");
 
-      // Each PR's notes, and where they go when posted.
-      let targets: (PostTarget & { url?: string; inline: number; general: boolean })[];
+      // Existing PRs say where they are; otherwise the remote does, when posting.
       let remote: Remote;
-      if (meta.source === "stack") {
+      if (kind.existingPrs) {
         const st = meta.stack!;
-        const forge = st.forge;
-        if (values.gitlab && forge !== "gitlab") throw new Error("this stack is on GitHub; drop --gitlab");
-        remote = { forge, host: st.host, path: st.repo };
-        targets =
-          forge === "gitlab"
-            ? stackDraftNotes(meta, hunks, result.plan, state).map(({ pr, notes }) => ({
-                number: pr.number,
-                url: pr.url,
-                headSha: pr.headSha,
-                base: pr.mergeBase,
-                start: pr.start,
-                body: notes,
-                inline: notes.filter((n) => n.position).length,
-                general: notes.some((n) => !n.position),
-              }))
-            : stackReviews(meta, hunks, result.plan, state).map(({ pr, review }) => ({
-                number: pr.number,
-                url: pr.url,
-                headSha: pr.headSha,
-                base: pr.mergeBase,
-                start: pr.start,
-                body: review,
-                inline: review.comments.length,
-                general: !!review.body,
-              }));
-      } else {
+        if (values.gitlab && st.forge !== "gitlab") throw new Error("this stack is on GitHub; drop --gitlab");
+        remote = { forge: st.forge, host: st.host, path: st.repo };
+      } else
         remote = values.post
           ? (await repoRemote(cwd, values.remote, values.forge ?? (values.gitlab ? "gitlab" : undefined))).remote
           : { forge: values.gitlab ? "gitlab" : "github", host: "", path: "" };
-        const body: ReviewPayload | DraftNote[] =
-          remote.forge === "gitlab" ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
-        const inline = Array.isArray(body) ? body.filter((n) => n.position).length : body.comments.length;
-        const general = Array.isArray(body) ? body.length > inline : !!body.body;
-        targets = inline || general ? [{ number: 0, headSha: meta.headSha, base: meta.mergeBase, start: meta.baseSha, body, inline, general }] : [];
-      }
+      const targets = commentTargets(meta, hunks, result.plan, state, remote.forge);
       if (!targets.length) throw new Error("no notes yet; leave notes in the review app first");
-      const forgeName = (n: number) => (n ? prName(remote.forge, n) : "");
-      const what = (t: (typeof targets)[number]) =>
-        `${t.inline} inline comment(s)${t.general ? `, plus notes in the ${remote.forge === "gitlab" ? "first draft note" : "review body"}` : ""} on ${t.headSha.slice(0, 7)}`;
 
       if (values.stdout) {
-        if (meta.source === "stack")
+        if (kind.existingPrs)
           process.stdout.write(JSON.stringify(targets.map((t) => ({ number: t.number, url: t.url, [remote.forge === "gitlab" ? "notes" : "review"]: t.body })), null, 2) + "\n");
         else process.stdout.write(JSON.stringify(targets[0]!.body, null, 2) + "\n");
         return 0;
       }
 
       if (values.post) {
-        if (meta.source !== "stack") {
-          if (meta.source && meta.source !== "pr")
-            throw new Error("these notes are on local changes, not a PR; use `spark-joy export` and paste them instead");
+        if (!kind.existingPrs) {
+          if (!kind.postable) throw new Error("these notes are on local changes, not a PR; use `spark-joy export` and paste them instead");
           const forge = makeForge(remote);
           let n = values.pr ? parsePrArg(values.pr, remote) : undefined;
           if (n === undefined) {
@@ -395,32 +348,30 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
         return 0;
       }
 
-      if (meta.source === "stack") {
+      if (kind.existingPrs) {
         // Files from an earlier run may name PRs that have no notes now.
         for (const f of await readdir(p.dir)) if (/^comments-\d+\.json$/.test(f)) await rm(join(p.dir, f));
         for (const t of targets) {
           const file = stackCommentsPath(p, t.number);
           await writeFile(file, JSON.stringify(t.body, null, 2) + "\n");
-          console.log(`${forgeName(t.number)}  ${what(t)}  wrote ${relative(cwd, file)}`);
+          console.log(`${prName(remote.forge, t.number)}  ${describeTarget(t, remote.forge)}  wrote ${relative(cwd, file)}`);
         }
       } else {
         await writeFile(p.comments, JSON.stringify(targets[0]!.body, null, 2) + "\n");
-        console.log(what(targets[0]!));
+        console.log(describeTarget(targets[0]!, remote.forge));
         console.log(`wrote ${relative(cwd, p.comments)}`);
       }
-      if (!meta.source || meta.source === "pr" || meta.source === "stack") await printNext(p, [{ cmd: post }]);
+      await printNext(p, afterComments(p, meta));
       return 0;
     }
 
     case "split": {
       const p = await run(cwd, values.run);
-      const raw = await readPlanRaw(p);
-      if (raw === undefined) throw new Error(`no plan yet; write ${p.plan}`);
-      const hunks = await readHunks(p);
-      const result = validatePlan(raw, hunks);
+      const { hunks, result } = await readCheckedPlan(p);
+      if (!result) throw new Error(`no plan yet; write ${p.plan}`);
       if (!result.ok || !result.plan) throw new Error("the plan has errors; run `spark-joy validate`");
       const meta = await readMeta(p);
-      if (meta.source === "stack") throw new Error("this run is stacked PRs that already exist; there is nothing to split");
+      if (policy(meta).existingPrs) throw new Error("this run is stacked PRs that already exist; there is nothing to split");
       const prefix = values.prefix ?? defaultPrefix(meta.branch);
       const stack = await buildStack({
         root: meta.repoRoot,
