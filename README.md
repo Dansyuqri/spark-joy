@@ -34,7 +34,7 @@ Ask your agent to "review this PR in chunks". It groups the diff into chunks of 
 - **Foundations first** goes types → logic → callers → tests.
 - **By feature** follows one capability at a time, end to end.
 
-Pick one and switch later without losing progress. Every change lands in exactly one chunk, and spark-joy checks that nothing is missing or reviewed twice. Stacked and related PRs can be broken up the same way.
+Pick one and switch later without losing progress. Every change lands in exactly one chunk, and spark-joy checks that nothing is missing or reviewed twice. Stacked and related PRs get the same two orders, PR by PR or across all of them.
 
 **Example:** spark-joy's own history, one 7.8k-line diff, became **18 chunks of 141–369 lines**, every hunk placed exactly once. The 2.7k-line lockfile went straight to *skim*.
 
@@ -44,7 +44,7 @@ More in [Use](#use).
 
 ### Review linked PRs together
 
-Some changes span PRs: an API and the client that uses it, or a fix and its follow-up. Add a "Relates to #12" line to a description (or run `spark-joy link`) and `spark-joy related` loads every linked PR into one view, one chunk per PR, each diffed against what it targets. **Across PRs** shows a file in each PR that touches it, and your notes post back to the PR they were left on.
+Some changes span PRs: an API and the client that uses it, or a fix and its follow-up. Add a "Relates to #12" line to a description (or run `spark-joy link`) and `spark-joy related` loads every linked PR into one view, one chunk per PR, each diffed against what it targets. Your agent can then group them *Foundations first across PRs* or *By feature across PRs*, so one chunk gathers the foundations, or one feature, from every PR it touches. **Across PRs** shows a file in each PR that touches it, and your notes post back to the PR they were left on.
 
 <p align="center"><img src="assets/related.gif" width="800" alt="Loading three related PRs, reviewing one that builds on another, then viewing a file across the PRs"></p>
 
