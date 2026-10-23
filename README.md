@@ -167,7 +167,8 @@ spark-joy serve --run pr-12-related
 
 - It follows `Relates to #15` lines (also `Related:`, `Related PRs:`, PR URLs, and `!15` on GitLab) from PR to PR, and finds open PRs that link back. One link anywhere connects two PRs. Links to other repos are listed but not loaded.
 - Each PR is diffed against what it targets: its base branch, or, when it's based on another PR in the run, that PR. The review page says which ("targets main", "builds on #12").
-- Everything else works as for a stack: the agent can break big PRs up, and `comments --post` sends each note to the PR it was left on, inline on that PR's own lines.
+- Your agent then reads all the PRs together and adds *Foundations first across PRs* and *By feature across PRs* orders: one chunk can gather the foundations, or one feature, from every PR it touches. Each file shows once per PR, tagged `#12`, `#15`, and every note keeps the PR it was left on. *Whole PRs* stays one chunk per PR.
+- `comments --post` sends each note to the PR it was left on, inline on that PR's own lines. A note on a chunk that spans PRs goes to the highest one and names the others.
 
 ## Develop
 

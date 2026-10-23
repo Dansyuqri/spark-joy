@@ -13,11 +13,13 @@ interface Props {
   path: string;
   // Chunk to start on, usually the one the reader came from.
   at?: number | "skim";
+  // Stack mode: the PR to start on, when that chunk spans several.
+  pr?: number;
 }
 
 // One file's diff in each chunk side by side, so the reader can follow how it
 // changes from PR to PR.
-export function FilePage({ data, plan, view, state, path, at }: Props) {
+export function FilePage({ data, plan, view, state, path, at, pr }: Props) {
   const split = plan.mode !== "review";
   const unit = unitName(plan, data.meta);
   const files = useMemo(() => viewFiles(view), [view]);
@@ -27,7 +29,7 @@ export function FilePage({ data, plan, view, state, path, at }: Props) {
   const reviewed = new Set(state.reviewed);
   const prefix = defaultPrefix(data.meta.branch);
   const touched = steps.filter((s) => s.hunks.length > 0);
-  const fromPr = prs && typeof at === "number" ? view.chunks[at]?.chunk.pr?.number : undefined;
+  const fromPr = prs ? (pr ?? (typeof at === "number" ? view.chunks[at]?.chunk.pr?.number : undefined)) : undefined;
   const start = Math.max(
     0,
     fromPr !== undefined ? steps.findIndex((s) => s.chunk?.pr?.number === fromPr) : steps.findIndex((s) => s.at === (at ?? touched[0]?.at)),

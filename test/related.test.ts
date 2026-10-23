@@ -2,12 +2,14 @@ import { rmSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { prTarget } from "../shared/derive";
 import { validatePlan } from "../shared/validate";
-import { emptyState } from "../shared/schema";
+import { emptyState, type Plan } from "../shared/schema";
 import { main } from "../cli/index";
 import { stackDraftNotes, stackReviews } from "../cli/lib/comments";
 import { extractStack, parentsFirst } from "../cli/lib/extract";
 import { parseRelated, walkRelated, type ForgePR, type Remote } from "../cli/lib/forge";
-import { readPlanRaw } from "../cli/lib/runs";
+import { readPlanRaw, writeJson } from "../cli/lib/runs";
+import { formatNext, runStatus } from "../cli/lib/next";
+import { exportMarkdown } from "../cli/lib/export";
 import { relatedRepo as makeRelated, sh } from "./fixture";
 
 const cleanup: (() => unknown)[] = [];
@@ -135,6 +137,56 @@ describe("related runs", () => {
     const { root, forge } = relatedRepo();
     const r = await extractStack({ cwd: root, forge, remote: "origin", start: 4, related: true });
     expect(r.warnings).toEqual(['PR #4 has no "Relates to" links, and no open PR links to it; add one with `spark-joy link`']);
+  });
+});
+
+describe("grouping related PRs across PRs", () => {
+  // Foundations from every PR, then what builds on them.
+  async function grouped() {
+    const { root, forge } = relatedRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1, related: true });
+    const raw = (await readPlanRaw(r.paths)) as Plan;
+    const ids = (n: number) => r.hunks.filter((h) => h.pr === n).map((h) => h.id);
+    const chunk = (id: string, title: string, hunks: string[]) => ({ id, title, intent: "Does it.", kind: "core" as const, hunks, dependsOn: [], reviewFocus: [], risk: "low" as const });
+    const plan: Plan = {
+      ...raw,
+      strategies: [
+        raw.strategies[0]!,
+        { id: "across-layers", chunks: [chunk("api", "The API", ids(1)), chunk("uses", "Its users", [...ids(2), ...ids(3)])] },
+        { id: "across-features", chunks: [chunk("all", "Everything", [...ids(1), ...ids(2), ...ids(3)])] },
+      ],
+      features: [{ title: "API", description: "d", hunks: r.hunks.map((h) => h.id) }],
+    };
+    return { r, plan };
+  }
+
+  it("asks the agent to group the PRs until it has", async () => {
+    const { r, plan } = await grouped();
+    expect(formatNext((await runStatus(r.paths)).next)).toBe(
+      `next: ask your agent "/spark-joy break up ${r.paths.name}"  (groups the PRs' changes by foundations and by feature)\n` +
+        `  or: spark-joy serve --run ${r.paths.name}  (review whole PRs)`,
+    );
+    expect(validatePlan(plan, r.hunks).issues).toEqual([]);
+    await writeJson(r.paths.plan, plan);
+    expect((await runStatus(r.paths)).next).toEqual([{ cmd: `serve --run ${r.paths.name}` }]);
+  });
+
+  it("keeps each note on its PR in a chunk that spans PRs", async () => {
+    const { r, plan } = await grouped();
+    const state = emptyState();
+    state.chunkNotes["across-layers/uses"] = "Both fine?";
+    state.lineNotes.push(
+      { id: "b", file: "src/app.ts", side: "new", line: 6, pr: 2, text: "Why b?", at: "" },
+      { id: "c", file: "src/app.ts", side: "new", line: 6, pr: 3, text: "Why c?", at: "" },
+    );
+    const reviews = stackReviews(r.meta, r.hunks, plan, state);
+    expect(reviews.map((x) => [x.pr.number, x.review.body, x.review.comments.map((c) => c.body)])).toEqual([
+      [2, "", ["Why b?"]],
+      [3, "**Its users (PR #2, PR #3)**\n\nBoth fine?", ["Why c?"]],
+    ]);
+    const md = exportMarkdown(r.meta, r.hunks, { ...plan, strategies: [plan.strategies[1]!, ...plan.strategies] }, state);
+    expect(md).toContain("- #2 `src/app.ts:6` Why b?");
+    expect(md).toContain("- #3 `src/app.ts:6` Why c?");
   });
 });
 

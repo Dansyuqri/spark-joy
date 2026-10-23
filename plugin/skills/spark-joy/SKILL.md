@@ -24,7 +24,7 @@ You run every step yourself. Every `spark-joy` command ends with a `next:` line 
 
 The user may also start in the terminal and come to you with one of these, printed by the CLI:
 - `/spark-joy plan <run>`: the run is already extracted. Skip `extract`; do steps 2–5 with `--run <run>` on every command.
-- `/spark-joy break up <run>`: a loaded stack has big PRs. See [Break up big PRs](#stacked-prs).
+- `/spark-joy break up <run>`: a loaded stack has big PRs, or a related run's PRs need grouping. See [Break up big PRs](#stacked-prs), or [Related PRs](#related-prs) for a `pr-<n>-related` run.
 
 `spark-joy status [--run <run>]` says where any run stands and prints its `next:` line.
 
@@ -230,7 +230,15 @@ spark-joy related --prs 12,15,20    # exactly these
 spark-joy link 12 15 20             # add "Relates to #15, #20" to #12's description
 ```
 
-`related` follows "Relates to #12" (or "Related:", a PR URL, `!12` on GitLab) lines in descriptions, both ways and onward, and loads every PR it reaches into one run, `pr-<n>-related`. Each PR is diffed against what it targets: its base branch, or the PR in the run whose branch it's based on. Pass on `warn` lines (links to other repos aren't loaded; a PR with no links). Everything after that is as in [Stacked PRs](#stacked-prs): the plan is written, big PRs can be broken up the same way, and notes post to their own PR.
+`related` follows "Relates to #12" (or "Related:", a PR URL, `!12` on GitLab) lines in descriptions, both ways and onward, and loads every PR it reaches into one run, `pr-<n>-related`. Each PR is diffed against what it targets: its base branch, or the PR in the run whose branch it's based on. Pass on `warn` lines (links to other repos aren't loaded; a PR with no links). The plan is written, and notes post to their own PR, as in [Stacked PRs](#stacked-prs).
+
+**Group across PRs.** When `related` or `status` says to (more than one PR), or the user asks, read every PR with `outline` and `show` (`--run <run>`) and add two strategies after `stack`, as in step 4, plus `features`:
+- `across-layers`: the foundations of every PR first (schemas, shared types, APIs), then what builds on them, wherever they are.
+- `across-features`: one capability end to end, gathering its hunks from every PR it touches.
+- A chunk may take hunks from several PRs; the app shows each PR's part of a file separately, tagged with its PR. Each PR has its own line numbers, so never treat two PRs' hunks of a file as one change. When one PR builds on another in the run, put the lower PR's hunks of a file first.
+- No `skim`: put mechanical hunks in a `mechanical` chunk. Leave the `stack` strategy as written.
+
+Don't add the per-PR `layers` and `features` orders to a related run.
 
 `link` edits the first PR's description on the forge, so run it only when the user asks to link PRs. If it says they're already linked, nothing changed.
 

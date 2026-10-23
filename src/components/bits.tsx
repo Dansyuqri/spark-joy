@@ -1,6 +1,6 @@
 import { Fragment } from "react";
-import { prRef, type ChunkStatus } from "../../shared/derive";
-import type { Chunk, Meta } from "../../shared/schema";
+import { prChunk, prRef, prsOf, type ChunkStatus } from "../../shared/derive";
+import type { Chunk, Hunk, Meta, Plan } from "../../shared/schema";
 import type { Issue } from "../../shared/validate";
 
 // Stack mode: a link to the PR or MR a chunk is, e.g. "#12".
@@ -10,6 +10,18 @@ export function PrLink({ meta, chunk }: { meta: Meta; chunk: Chunk }) {
     <a className="pr-link" href={chunk.pr.url} target="_blank" rel="noreferrer" title={`Open ${chunk.pr.url}`}>
       {prRef(meta, chunk.pr.number)}
     </a>
+  );
+}
+
+// Stack mode: links to each PR a chunk takes hunks from, for chunks that span PRs.
+export function PrLinks({ meta, plan, hunks }: { meta: Meta; plan: Plan; hunks: readonly Hunk[] }) {
+  return (
+    <>
+      {prsOf(hunks).map((n) => {
+        const pr = prChunk(plan, n);
+        return pr ? <PrLink key={n} meta={meta} chunk={pr} /> : null;
+      })}
+    </>
   );
 }
 
