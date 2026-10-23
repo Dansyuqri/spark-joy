@@ -21,7 +21,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
-      # The browser download is the slowest step, so keep it across runs, keyed on the installed Playwright version.
+      # Skip --with-deps: the runner image already has every library Chromium needs, and the extra fonts it
+      # pulls from the Ubuntu mirror have taken up to 8 minutes. Keep the browser itself across runs.
       - name: Playwright version
         id: playwright
         run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -31,8 +32,5 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright-core install --with-deps chromium
-      # The cache holds the browser only, so a hit still needs its system packages.
-      - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright-core install-deps chromium
+        run: npx playwright-core install chromium
       - run: npm run test:e2e
