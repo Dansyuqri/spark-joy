@@ -79,7 +79,22 @@ In the app:
 - Use **↑ 20**, **↓ 20** or **Show all** between hunks to see more context, or **View file** to see the whole file.
 - **Summary → Export review.md** writes a markdown report with progress, notes (including `file:line`) and the feature list.
 
-On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark-joy comments` and posts your notes, word for word, as a pending review (GitHub) or draft notes (GitLab) that only you can see until you submit them. Line notes land inline on their line; chunk notes go in the review body. The agent never adds comments of its own.
+On GitHub or GitLab, ask your agent to "post my notes to the PR", or run `spark-joy comments --post` yourself. Your notes go up word for word as a pending review (GitHub) or draft notes (GitLab) that only you can see until you submit them. Line notes land inline on their line; chunk notes go in the review body. It checks the PR is still at the commit you reviewed first, and the agent never adds comments of its own.
+
+### Agent or terminal
+
+Your agent drives every step: ask it and it runs the commands. The only step that needs the agent is planning (reading the diff and grouping it); everything else is a `spark-joy` command.
+
+Every command ends with a `next:` line saying what comes next: a command to run, or what to ask your agent. If your agent runs in a sandbox that can't start a server, write to `.git` or reach GitHub, it gives you that command to run in your terminal instead, and the `next:` line there tells you when to go back to the agent. Lost track? `spark-joy status` says where a run stands.
+
+```
+$ spark-joy stack 12
+ 1  PR #12  a → main  80 lines  Add invitations table
+ 2  PR #13  b → a  820 lines  Invite endpoint
+wrote .spark-joy/pr-12-stack, with a plan of one chunk per PR
+next: ask your agent "/spark-joy break up pr-12-stack"  (PR #13 is 820 lines)
+  or: spark-joy serve --run pr-12-stack  (review whole PRs)
+```
 
 ### Commands
 
@@ -88,6 +103,7 @@ On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark
 | `spark-joy extract [base] [--working]` | Diff `merge-base(base, HEAD)..HEAD` (or the working tree) into a run in `.spark-joy/<branch>/` |
 | `spark-joy extract --staged \| --uncommitted` | Diff `HEAD` against the index or the working tree, for splitting |
 | `spark-joy stack <pr> \| --prs a,b,c` | Load existing stacked PRs or MRs into a run, one chunk per PR (the agent can break big ones up) |
+| `spark-joy status` | Where a run stands, and the `next:` step |
 | `spark-joy outline` | Compact list of every file and hunk with sizes and flags |
 | `spark-joy show <ids…> \| --file <path>` | Print hunks in full; accepts ranges like `h003..h010` |
 | `spark-joy links` | Cross-file links: which hunk uses a name another defines |
@@ -96,6 +112,7 @@ On GitHub or GitLab, ask your agent to "post my notes to the PR". It runs `spark
 | `spark-joy serve [--port n]` | Start the review app |
 | `spark-joy export [--stdout]` | Write `review.md` |
 | `spark-joy comments [--gitlab] [--stdout]` | Write `comments.json`: your notes as a pending GitHub review or GitLab draft notes; one file per PR for a stack |
+| `spark-joy comments --post [--pr n]` | Post them through `gh` or `glab`, pending until you submit |
 | `spark-joy split [--check cmd] [--apply]` | Turn a split plan into stacked local branches |
 | `spark-joy install-skill [--agent a] [--project] [--print]` | Install the agent skill |
 
@@ -138,7 +155,7 @@ spark-joy serve --run pr-12-stack
 - The plan is written for you from each PR's title and description, with a link to the PR. Your agent can add risk and review focus; they're kept when you import the stack again after new pushes.
 - Big PRs can be broken up too: the agent adds *Foundations first* and *By feature* orders that split each PR into chunks, PR by PR, listed under the PR they come from. Pick one on the Plan page or stay with *Whole PRs*; progress carries over between them. **Across PRs** still shows one panel per PR in every order.
 - It talks to the forge through `gh` or `glab`, so it uses their login and stores no tokens. The forge comes from the remote's host; pass `--forge github|gitlab` for a self-hosted one whose name doesn't say, and `--remote` if the PRs aren't on `origin`.
-- Asking your agent to post your notes sends each one to the PR it was left on: `comments` writes one `comments-<n>.json` per PR with notes, each a pending review (or draft notes) on that PR's head, with line notes on that PR's own diff lines. A chunk note goes to its PR; a chunk that spans PRs goes to the highest one and names the others. If a PR doesn't target the one below it (`--prs` warned), its line notes go in its review body instead of inline.
+- `comments --post` (or asking your agent to post your notes) sends each one to the PR it was left on, as a pending review (or draft notes) on that PR's head, with line notes on that PR's own diff lines. It posts nothing if any PR has moved on since you loaded it. A chunk note goes to its PR; a chunk that spans PRs goes to the highest one and names the others. If a PR doesn't target the one below it (`--prs` warned), its line notes go in its review body instead of inline.
 
 ## Develop
 

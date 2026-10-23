@@ -1,7 +1,5 @@
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const exec = promisify(execFile);
+import type { DraftNote, ReviewPayload } from "./comments";
 
 export type ForgeKind = "github" | "gitlab";
 
@@ -24,12 +22,18 @@ export interface ForgePR {
   state: "open" | "closed" | "merged";
   // From another repo, so no PR in this repo can be based on it.
   fork: boolean;
+  // GitLab only: the SHAs a draft note's position must name.
+  diffRefs?: { base: string; start: string; head: string };
 }
 
 export interface Forge {
   remote: Remote;
   get(n: number): Promise<ForgePR>;
   listOpen(): Promise<ForgePR[]>;
+  // A pending review (GitHub) or one draft note (GitLab): only the reviewer
+  // sees either until they submit their review on the forge.
+  postReview(n: number, review: ReviewPayload): Promise<void>;
+  postDraftNote(n: number, note: DraftNote): Promise<void>;
 }
 
 // The ref a PR's head can be fetched from.
@@ -136,6 +140,7 @@ function fromGitlab(p: Json): ForgePR {
     headSha: p.sha,
     state: p.state === "opened" ? "open" : p.state === "merged" ? "merged" : "closed",
     fork: p.source_project_id !== p.target_project_id,
+    ...(p.diff_refs && { diffRefs: { base: p.diff_refs.base_sha, start: p.diff_refs.start_sha, head: p.diff_refs.head_sha } }),
   };
 }
 
@@ -148,20 +153,26 @@ const CLI: Record<ForgeKind, { bin: string; login: string }> = {
 // never handles a token.
 export function cliForge(remote: Remote): Forge {
   const { bin, login } = CLI[remote.forge];
-  const api = async (path: string, paginate = false): Promise<unknown[]> => {
-    const args = ["api", "--hostname", remote.host, ...(paginate ? ["--paginate"] : []), path];
-    const { stdout } = await exec(bin, args, { maxBuffer: 256 * 1024 * 1024, encoding: "utf8" }).catch((e: NodeJS.ErrnoException & { stderr?: string }) => {
-      if (e.code === "ENOENT") throw new Error(`${bin} is not installed; install it and run \`${login}\``);
-      throw new Error(`${bin} api ${path} failed: ${(e.stderr || e.message).trim()}; check \`${login}\``);
+  const call = (args: string[], input?: string) =>
+    new Promise<string>((resolve, reject) => {
+      const child = execFile(bin, ["api", "--hostname", remote.host, ...args], { maxBuffer: 256 * 1024 * 1024, encoding: "utf8" }, (e, stdout, stderr) => {
+        if (!e) return resolve(stdout);
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") reject(new Error(`${bin} is not installed; install it and run \`${login}\``));
+        else reject(new Error(`${bin} api ${args.at(-1)} failed: ${(stderr || e.message).trim()}; check \`${login}\``));
+      });
+      if (input !== undefined) child.stdin!.end(input);
     });
-    return parseJsonStream(stdout);
-  };
+  const api = async (path: string, paginate = false) => parseJsonStream(await call([...(paginate ? ["--paginate"] : []), path]));
+  const post = async (path: string, body: unknown) => void (await call(["--method", "POST", "--input", "-", path], JSON.stringify(body)));
   if (remote.forge === "github") {
     const repo = `repos/${remote.path}`;
     return {
       remote,
       get: async (n) => fromGithub((await api(`${repo}/pulls/${n}`))[0] as Json),
       listOpen: async () => (await api(`${repo}/pulls?state=open&per_page=100`, true)).flat().map((p) => fromGithub(p as Json)),
+      postReview: (n, review) => post(`${repo}/pulls/${n}/reviews`, review),
+      postDraftNote: () => Promise.reject(new Error("draft notes are GitLab's; post a review on GitHub")),
     };
   }
   const project = `projects/${encodeURIComponent(remote.path)}`;
@@ -170,5 +181,7 @@ export function cliForge(remote: Remote): Forge {
     get: async (n) => fromGitlab((await api(`${project}/merge_requests/${n}`))[0] as Json),
     listOpen: async () =>
       (await api(`${project}/merge_requests?state=opened&per_page=100`, true)).flat().map((p) => fromGitlab(p as Json)),
+    postReview: () => Promise.reject(new Error("reviews are GitHub's; post draft notes on GitLab")),
+    postDraftNote: (n, note) => post(`${project}/merge_requests/${n}/draft_notes`, note),
   };
 }

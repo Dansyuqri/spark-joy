@@ -9,6 +9,7 @@ import { extractStack } from "../cli/lib/extract";
 import { parseJsonStream, parsePrArg, parseRemote, walkStack, type ForgePR, type Remote } from "../cli/lib/forge";
 import { readPlanRaw, stackCommentsPath, writeJson } from "../cli/lib/runs";
 import { emptyState, type Plan } from "../shared/schema";
+import { formatNext, runStatus } from "../cli/lib/next";
 import { serve } from "../cli/lib/server";
 import { stackRepo as makeStack } from "./fixture";
 
@@ -239,5 +240,40 @@ describe("extractStack", () => {
     expect(JSON.parse(readFileSync(stackCommentsPath(r.paths, 2), "utf8")).comments).toHaveLength(1);
     expect([1, 3, 9].map((n) => existsSync(stackCommentsPath(r.paths, n)))).toEqual([false, false, false]);
     await expect(main(["comments", "--run", r.paths.name, "--gitlab"], root)).rejects.toThrow(/on GitHub/);
+  });
+
+  it("posts each PR's notes once it checks every PR is still at the reviewed commit", async () => {
+    const { root, forge, prs, posts } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    const state = emptyState();
+    state.lineNotes.push({ id: "b", file: "src/app.ts", side: "new", line: 6, pr: 2, text: "Why b?", at: "" });
+    await writeJson(r.paths.state, state);
+    const deps = { forge: () => forge };
+    const post = () => main(["comments", "--post", "--run", r.paths.name], root, deps);
+
+    // PR 2 has a new push since the stack was loaded.
+    prs.forEach((p) => (p.headSha = r.meta.stack!.prs.find((x) => x.number === p.number)!.headSha));
+    prs[1]!.headSha = "f".repeat(40);
+    await expect(post()).rejects.toThrow(/nothing posted: PR #2 is at fffffff/);
+    expect(posts).toEqual([]);
+
+    prs[1]!.headSha = r.meta.stack!.prs[1]!.headSha;
+    expect(await post()).toBe(0);
+    expect(posts).toEqual([{ n: 2, body: expect.objectContaining({ commit_id: prs[1]!.headSha, comments: [expect.objectContaining({ body: "Why b?" })] }) }]);
+    expect((await runStatus(r.paths)).next).toEqual([]);
+    await expect(post()).rejects.toThrow(/already posted/);
+    expect(await main(["comments", "--post", "--force", "--run", r.paths.name], root, deps)).toBe(0);
+    expect(posts).toHaveLength(2);
+  });
+
+  it("asks the agent to break up a stack with a big PR", async () => {
+    const { root, forge } = stackRepo();
+    const r = await extractStack({ cwd: root, forge, remote: "origin", start: 1 });
+    const hunks = r.hunks.map((h) => (h.pr === 2 ? { ...h, added: 400 } : h));
+    await writeJson(r.paths.hunks, hunks);
+    expect(formatNext((await runStatus(r.paths)).next)).toBe(
+      `next: ask your agent "/spark-joy break up ${r.paths.name}"  (PR #2 is ${hunks.filter((h) => h.pr === 2).reduce((n, h) => n + h.added + h.removed, 0)} lines)\n` +
+        `  or: spark-joy serve --run ${r.paths.name}  (review whole PRs)`,
+    );
   });
 });

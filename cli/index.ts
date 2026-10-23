@@ -6,13 +6,15 @@ import { parseArgs } from "node:util";
 import { defaultPrefix } from "../shared/derive";
 import { RUBRIC_FILE } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
-import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews } from "./lib/comments";
+import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews, type DraftNote, type ReviewPayload } from "./lib/comments";
 import { extract, extractStack } from "./lib/extract";
-import { cliForge, parsePrArg, parseRemote, prName, type ForgeKind } from "./lib/forge";
+import { cliForge, parsePrArg, parseRemote, prName, type Forge, type ForgeKind, type Remote } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
-import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath } from "./lib/runs";
+import { formatNext, postedPath, runStatus, type Step } from "./lib/next";
+import { postNotes, type PostTarget } from "./lib/post";
+import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath, writeJson, type RunPaths } from "./lib/runs";
 import { formatRubric, readRubric } from "./lib/rubric";
 import { serve } from "./lib/server";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
@@ -34,6 +36,7 @@ Commands:
       --prs <a,b,c>     Exactly these PRs, bottom first, instead of finding the stack
       --remote <name>   Remote the PRs are on (default origin)
       --forge <name>    github or gitlab, when the remote's host doesn't say
+  status                Where the run stands and what to do next
   outline               Compact per-file, per-hunk overview of the diff
   show <ids...>         Print hunks in full; accepts h003, h003..h010, or a parent id like h012
       --file <path>     Print every hunk of a file
@@ -49,6 +52,10 @@ Commands:
                         For a stack, one comments-<n>.json per PR or MR with notes
       --gitlab          As GitLab draft notes instead, one request body per note
       --stdout          Print instead of writing the file
+      --post            Post them through gh or glab as a pending review or draft notes,
+                        after checking each PR is still at the commit you reviewed
+      --pr <n>          The PR or MR to post to (default: the open one for this branch)
+      --force           Post again after an earlier --post
   split                 Dry run of a split plan: build the stacked PRs and check they add up
       --check <cmd>     Run cmd on each PR in a temporary worktree, e.g. "npm ci && npm test"
       --apply           Create the branches (never pushes)
@@ -59,6 +66,8 @@ Commands:
       --agent <name>    Only one: claude or agents
       --project         Install into the repo (./.claude/skills, ./.agents/skills)
       --print           Print the skill instead, e.g. to paste into AGENTS.md
+
+Every command ends with a "next:" line: a command to run, or what to ask your agent.
 
 Common options:
   --run <name>          Run to use (default: the current branch's run)
@@ -72,7 +81,28 @@ async function run(cwd: string, name: string | undefined) {
   return resolveRun(root, name, branch);
 }
 
-export async function main(argv: string[], cwd = process.cwd()): Promise<number> {
+// What comes next for the run, printed last by most commands.
+async function printNext(p: RunPaths, steps?: Step[]) {
+  const next = steps ?? (await runStatus(p)).next;
+  if (next.length) console.log(formatNext(next));
+}
+
+async function repoRemote(cwd: string, name: string | undefined, forge: string | undefined): Promise<{ remote: Remote; name: string }> {
+  if (forge !== undefined && forge !== "github" && forge !== "gitlab") throw new Error("--forge must be github or gitlab");
+  const root = await g.repoRoot(cwd);
+  const remoteName = name ?? "origin";
+  const url = (await g.git(root, ["remote", "get-url", remoteName]).catch(() => "")).trim();
+  if (!url) throw new Error(`no remote named ${remoteName}; pass --remote`);
+  return { remote: parseRemote(url, forge as ForgeKind | undefined), name: remoteName };
+}
+
+// Tests pass a fake forge; otherwise gh or glab is used.
+export interface Deps {
+  forge?: (remote: Remote) => Forge;
+}
+
+export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {}): Promise<number> {
+  const makeForge = deps.forge ?? cliForge;
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -93,6 +123,8 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       port: { type: "string" },
       stdout: { type: "boolean" },
       gitlab: { type: "boolean" },
+      post: { type: "boolean" },
+      pr: { type: "string" },
       project: { type: "boolean" },
       prs: { type: "string" },
       remote: { type: "string" },
@@ -126,24 +158,19 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         console.log(`note: ${r.untracked.length} untracked file(s) are not included; \`git add -N <file>\` to include them`);
       if (await readPlanRaw(r.paths)) console.log("note: plan.json already exists and may be stale; run `spark-joy validate`");
       console.log((await readRubric(r.meta.repoRoot)) ? `risk rubric: ${RUBRIC_FILE}` : "no risk rubric yet");
+      await printNext(r.paths);
       return 0;
     }
 
     case "stack": {
-      const forgeKind = values.forge;
-      if (forgeKind !== undefined && forgeKind !== "github" && forgeKind !== "gitlab") throw new Error("--forge must be github or gitlab");
-      const root = await g.repoRoot(cwd);
-      const remoteName = values.remote ?? "origin";
-      const url = (await g.git(root, ["remote", "get-url", remoteName]).catch(() => "")).trim();
-      if (!url) throw new Error(`no remote named ${remoteName}; pass --remote`);
-      const remote = parseRemote(url, forgeKind as ForgeKind | undefined);
+      const { remote, name: remoteName } = await repoRemote(cwd, values.remote, values.forge);
       const prs = values.prs?.split(",").filter((x) => x.trim()).map((x) => parsePrArg(x, remote));
       if (!prs?.length && !rest[0]) throw new Error("pass a PR number or URL, e.g. `spark-joy stack 12`, or --prs 12,13,14");
       const splitAt = values["split-at"] ? Number(values["split-at"]) : undefined;
       if (splitAt !== undefined && !(splitAt >= 40)) throw new Error("--split-at must be a number ≥ 40");
       const r = await extractStack({
         cwd,
-        forge: cliForge(remote),
+        forge: makeForge(remote),
         remote: remoteName,
         start: rest[0] ? parsePrArg(rest[0], remote) : undefined,
         prs,
@@ -157,7 +184,16 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         console.log(`${String(i + 1).padStart(2)}  ${prName(remote.forge, p.number)}  ${p.head} → ${p.base}  ${lines} lines  ${p.title}`);
       });
       console.log(`wrote ${relative(cwd, r.paths.dir)}, with a plan of one chunk per ${remote.forge === "gitlab" ? "MR" : "PR"}`);
-      console.log(`review it: spark-joy serve --run ${r.paths.name}`);
+      await printNext(r.paths);
+      return 0;
+    }
+
+    case "status": {
+      const p = await run(cwd, values.run);
+      console.log(describeMeta(await readMeta(p)));
+      const s = await runStatus(p);
+      for (const l of s.lines) console.log(l);
+      await printNext(p, s.next);
       return 0;
     }
 
@@ -203,6 +239,7 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
         const errors = result.issues.filter((i) => i.level === "error").length;
         const warnings = result.issues.length - errors;
         console.log(result.ok ? `plan ok (${warnings} warning${warnings === 1 ? "" : "s"})` : `${errors} error(s), ${warnings} warning(s)`);
+        if (result.ok) await printNext(p);
       }
       return result.ok ? 0 : 1;
     }
@@ -212,6 +249,16 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       const port = values.port ? Number(values.port) : 4848;
       const s = await serve({ paths: p, appDir: join(PKG_ROOT, "dist", "app"), port });
       console.log(`spark-joy reviewing ${p.name} at ${s.url}  (Ctrl+C to stop)`);
+      const plan = await readPlanRaw(p).catch(() => undefined);
+      const mode = (plan as { mode?: string } | undefined)?.mode;
+      const source = (await readMeta(p)).source;
+      const after: Step =
+        mode === "split"
+          ? { cmd: `split --run ${p.name}`, why: "after previewing" }
+          : !source || source === "pr" || source === "stack"
+            ? { cmd: `comments --post --run ${p.name}`, why: "after leaving notes" }
+            : { cmd: `export --run ${p.name}`, why: "after reviewing" };
+      console.log(formatNext([after]));
       await new Promise<void>((resolve) => process.once("SIGINT", resolve));
       await s.close();
       return 0;
@@ -240,50 +287,97 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
       if (!result?.plan) throw new Error("no valid plan; run `spark-joy validate`");
       const meta = await readMeta(p);
       const state = await readState(p);
+      const post = `comments --post --run ${p.name}`;
+      if (values.post && !values.force && (await readFile(postedPath(p), "utf8").catch(() => undefined)))
+        throw new Error("these notes were already posted; submit or delete that pending review on the forge first, then pass --force");
+
+      // Each PR's notes, and where they go when posted.
+      let targets: (PostTarget & { url?: string; inline: number; general: boolean })[];
+      let remote: Remote;
       if (meta.source === "stack") {
-        const forge = meta.stack!.forge;
+        const st = meta.stack!;
+        const forge = st.forge;
         if (values.gitlab && forge !== "gitlab") throw new Error("this stack is on GitHub; drop --gitlab");
-        const perPr =
+        remote = { forge, host: st.host, path: st.repo };
+        targets =
           forge === "gitlab"
             ? stackDraftNotes(meta, hunks, result.plan, state).map(({ pr, notes }) => ({
-                pr,
+                number: pr.number,
+                url: pr.url,
+                headSha: pr.headSha,
+                base: pr.mergeBase,
+                start: pr.start,
                 body: notes,
                 inline: notes.filter((n) => n.position).length,
                 general: notes.some((n) => !n.position),
               }))
             : stackReviews(meta, hunks, result.plan, state).map(({ pr, review }) => ({
-                pr,
+                number: pr.number,
+                url: pr.url,
+                headSha: pr.headSha,
+                base: pr.mergeBase,
+                start: pr.start,
                 body: review,
                 inline: review.comments.length,
                 general: !!review.body,
               }));
-        if (!perPr.length) throw new Error("no notes yet; leave notes in the review app first");
-        if (values.stdout) {
-          process.stdout.write(JSON.stringify(perPr.map(({ pr, body }) => ({ number: pr.number, url: pr.url, [forge === "gitlab" ? "notes" : "review"]: body })), null, 2) + "\n");
-          return 0;
+      } else {
+        remote = values.post
+          ? (await repoRemote(cwd, values.remote, values.forge ?? (values.gitlab ? "gitlab" : undefined))).remote
+          : { forge: values.gitlab ? "gitlab" : "github", host: "", path: "" };
+        const body: ReviewPayload | DraftNote[] =
+          remote.forge === "gitlab" ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
+        const inline = Array.isArray(body) ? body.filter((n) => n.position).length : body.comments.length;
+        const general = Array.isArray(body) ? body.length > inline : !!body.body;
+        targets = inline || general ? [{ number: 0, headSha: meta.headSha, base: meta.mergeBase, start: meta.baseSha, body, inline, general }] : [];
+      }
+      if (!targets.length) throw new Error("no notes yet; leave notes in the review app first");
+      const forgeName = (n: number) => (n ? prName(remote.forge, n) : "");
+      const what = (t: (typeof targets)[number]) =>
+        `${t.inline} inline comment(s)${t.general ? `, plus notes in the ${remote.forge === "gitlab" ? "first draft note" : "review body"}` : ""} on ${t.headSha.slice(0, 7)}`;
+
+      if (values.stdout) {
+        if (meta.source === "stack")
+          process.stdout.write(JSON.stringify(targets.map((t) => ({ number: t.number, url: t.url, [remote.forge === "gitlab" ? "notes" : "review"]: t.body })), null, 2) + "\n");
+        else process.stdout.write(JSON.stringify(targets[0]!.body, null, 2) + "\n");
+        return 0;
+      }
+
+      if (values.post) {
+        if (meta.source !== "stack") {
+          if (meta.source && meta.source !== "pr")
+            throw new Error("these notes are on local changes, not a PR; use `spark-joy export` and paste them instead");
+          const forge = makeForge(remote);
+          let n = values.pr ? parsePrArg(values.pr, remote) : undefined;
+          if (n === undefined) {
+            const open = (await forge.listOpen()).filter((x) => x.head === meta.branch);
+            if (open.length !== 1)
+              throw new Error(open.length ? `${open.length} open PRs for ${meta.branch}; pass --pr` : `no open PR for ${meta.branch}; pass --pr`);
+            n = open[0]!.number;
+          }
+          targets[0]!.number = n;
         }
+        const posted = await postNotes(makeForge(remote), targets);
+        for (const x of posted) console.log(`${prName(remote.forge, x.number)}  posted ${x.count} pending ${remote.forge === "gitlab" ? "draft note(s)" : "comment(s)"}  ${x.url}`);
+        await writeJson(postedPath(p), { at: new Date().toISOString(), prs: posted.map((x) => x.number) });
+        console.log(`only you see them until you submit your review on ${remote.forge === "gitlab" ? "GitLab" : "GitHub"}`);
+        return 0;
+      }
+
+      if (meta.source === "stack") {
         // Files from an earlier run may name PRs that have no notes now.
         for (const f of await readdir(p.dir)) if (/^comments-\d+\.json$/.test(f)) await rm(join(p.dir, f));
-        for (const { pr, body, inline, general } of perPr) {
-          const file = stackCommentsPath(p, pr.number);
-          await writeFile(file, JSON.stringify(body, null, 2) + "\n");
-          const what = `${inline} inline comment(s)${general ? `, plus notes in the ${forge === "gitlab" ? "first draft note" : "review body"}` : ""}`;
-          console.log(`${prName(forge, pr.number)}  ${what} on ${pr.headSha.slice(0, 7)}  wrote ${relative(cwd, file)}`);
+        for (const t of targets) {
+          const file = stackCommentsPath(p, t.number);
+          await writeFile(file, JSON.stringify(t.body, null, 2) + "\n");
+          console.log(`${forgeName(t.number)}  ${what(t)}  wrote ${relative(cwd, file)}`);
         }
-        return 0;
+      } else {
+        await writeFile(p.comments, JSON.stringify(targets[0]!.body, null, 2) + "\n");
+        console.log(what(targets[0]!));
+        console.log(`wrote ${relative(cwd, p.comments)}`);
       }
-      const review = values.gitlab ? gitlabDraftNotes(meta, hunks, result.plan, state) : reviewPayload(meta, hunks, result.plan, state);
-      const inline = Array.isArray(review) ? review.filter((n) => n.position).length : review.comments.length;
-      const general = Array.isArray(review) ? review.length > inline : !!review.body;
-      if (!inline && !general) throw new Error("no notes yet; leave notes in the review app first");
-      const json = JSON.stringify(review, null, 2) + "\n";
-      if (values.stdout) {
-        process.stdout.write(json);
-        return 0;
-      }
-      await writeFile(p.comments, json);
-      console.log(`${inline} inline comment(s)${general ? ", plus notes in the review body" : ""} on ${meta.headSha.slice(0, 7)}`);
-      console.log(`wrote ${relative(cwd, p.comments)}`);
+      if (!meta.source || meta.source === "pr" || meta.source === "stack") await printNext(p, [{ cmd: post }]);
       return 0;
     }
 
@@ -325,7 +419,8 @@ export async function main(argv: string[], cwd = process.cwd()): Promise<number>
 
       await writeFile(p.prs, prsMarkdown(meta, stack));
       if (!values.apply) {
-        console.log(`wrote ${relative(cwd, p.prs)}\nnothing created; add --apply to create the branches`);
+        console.log(`wrote ${relative(cwd, p.prs)}\nnothing created yet`);
+        await printNext(p, [{ cmd: `split --apply --run ${p.name}`, why: "creates local branches, never pushes" }]);
         return 0;
       }
       await createBranches(meta.repoRoot, stack, !!values.force);
