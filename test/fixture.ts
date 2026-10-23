@@ -131,10 +131,14 @@ export function stackRepo() {
     fork: false,
   });
   const prs = [pr(1, "main", "a", "First part."), pr(2, "a", "b"), pr(3, "b", "c")];
+  // What was posted, by PR number.
+  const posts: { n: number; body: unknown }[] = [];
   const forge: Forge = {
     remote: { forge: "github", host: "github.com", path: "o/r" },
     get: async (n) => prs.find((p) => p.number === n)!,
     listOpen: async () => prs,
+    postReview: async (n, body) => void posts.push({ n, body }),
+    postDraftNote: async (n, body) => void posts.push({ n, body }),
   };
-  return { dir, root, forge, prs };
+  return { dir, root, forge, prs, posts };
 }

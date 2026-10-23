@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { main } from "../cli/index";
@@ -6,6 +7,7 @@ import { extract } from "../cli/lib/extract";
 import { gitlabDraftNotes, reviewPayload } from "../cli/lib/comments";
 import { exportMarkdown } from "../cli/lib/export";
 import { expandIds, outline } from "../cli/lib/format";
+import { formatNext, runStatus } from "../cli/lib/next";
 import { readHunks, readLinks, readMeta, readState, runPaths, writeJson } from "../cli/lib/runs";
 import { numberLines, setReviewed, strategyView } from "../shared/derive";
 import { emptyState, type Hunk, type ReviewState } from "../shared/schema";
@@ -86,7 +88,24 @@ describe("plan, review and export", () => {
     } finally {
       console.log = orig;
     }
-    expect(log.at(-1)).toMatch(/^plan ok/);
+    expect(log.at(-2)).toMatch(/^plan ok/);
+    expect(log.at(-1)).toBe("next: spark-joy serve --run feature");
+  });
+
+  it("says what comes next at each stage", async () => {
+    const p = runPaths(root, "feature");
+    const next = async () => formatNext((await runStatus(p)).next);
+    await rm(p.plan, { force: true });
+    expect(await next()).toBe('next: ask your agent "/spark-joy plan feature"');
+    await writeJson(p.plan, { strategies: [] });
+    expect(await next()).toBe('next: ask your agent "/spark-joy plan feature"  (fix the plan)');
+    await writeJson(p.plan, planFor(hunks));
+    expect(await next()).toBe("next: spark-joy serve --run feature");
+    const state = emptyState();
+    state.lineNotes.push({ id: "n", file: hunks[0]!.file, side: "new", line: 1, text: "Hm", at: "" });
+    await writeJson(p.state, state);
+    expect(await next()).toMatch(/^next: spark-joy comments --post --run feature/);
+    await rm(p.state);
   });
 
   it("installs the skill for Claude Code and for .agents agents", async () => {

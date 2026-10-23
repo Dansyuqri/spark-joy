@@ -13,7 +13,19 @@ You group a diff into reviewable chunks; the `spark-joy` CLI does the rest. Two 
 
 The reader is a tired human. **Every word you write is load on them. Be terse.**
 
-Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review. If your sandbox blocks a command (a server that keeps running, or `split --apply` writing to `.git`), give the user the exact command to run instead.
+Run `spark-joy` inside the repo under review. If it isn't on PATH, ask the user to run `npm install -g @dansyuqri/spark-joy`; don't try other packages. Never edit the code under review.
+
+## You drive; the CLI does the work
+
+You run every step yourself. Every `spark-joy` command ends with a `next:` line (sometimes an `or:` line too). Follow it:
+- `next: spark-joy …`: run it. If your sandbox blocks it (no network or `gh`/`glab` login, a server that keeps running, writes to `.git`), stop and give the user that exact line to run in their terminal, plus what to ask you after, if the CLI will need you again. Don't work around a block.
+- `next: ask your agent "…"`: that's your own next job. Carry on.
+
+The user may also start in the terminal and come to you with one of these, printed by the CLI:
+- `/spark-joy plan <run>`: the run is already extracted. Skip `extract`; do steps 2–5 with `--run <run>` on every command.
+- `/spark-joy break up <run>`: a loaded stack has big PRs. See [Break up big PRs](#stacked-prs).
+
+`spark-joy status [--run <run>]` says where any run stands and prints its `next:` line.
 
 ## 1. Extract
 
@@ -133,39 +145,19 @@ Fix every error and re-run until it says `plan ok`. Fix the warnings too.
 
 ## 6. Serve
 
-Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more.
+Run `spark-joy serve` in the background. Reply with the URL and one line: what the PR does and the chunk count. Nothing more. If you can't run it, reply with the command and the same line.
 
 ## 7. Post the reviewer's notes (only when asked)
 
 When the user asks to turn their review into PR or MR comments, post **their notes, word for word**. Never add your own findings, never reword, summarise or "improve" a note, and never comment on anything they didn't. If they want more said, they write it in the app.
 
 ```
-spark-joy comments            # GitHub
-spark-joy comments --gitlab   # GitLab
+spark-joy comments --post    # --pr <n> if it can't find this branch's PR; --forge gitlab on a self-hosted GitLab
 ```
 
-It writes `.spark-joy/<run>/comments.json` from the notes saved in the app: line notes on diff lines become inline comments on that line; chunk notes and notes on lines outside the diff go in the review body. If it says there are no notes, tell the user and stop. Post the file unchanged; never edit it.
+It turns the notes saved in the app into a **pending** GitHub review or GitLab draft notes, which only the user sees until they submit: line notes inline on their line, chunk notes and notes outside the diff in the review body. It checks every PR is still at the commit that was reviewed and posts nothing if one moved; then ask the user to re-extract and check their notes still sit on the right lines. On a stack it posts each PR's notes to that PR. If it says there are no notes, tell the user and stop.
 
-**GitHub**
-1. The commit it prints must be the PR's head (`gh pr view <n> --json headRefOid`). If not, ask the user to re-extract and check their notes still sit on the right lines.
-2. Post it as a **pending** review, which only the user sees until they submit it:
-   ```
-   gh api --method POST repos/<owner>/<repo>/pulls/<n>/reviews --input .spark-joy/<run>/comments.json
-   ```
-   Without `gh`, use your GitHub tools: create a pending review on the printed commit, then add each comment and the body exactly as they appear in the file.
-
-**GitLab**
-1. Each note's `position` SHAs must match the MR's `diff_refs` (`glab mr view <iid> -F json`): `head_sha`, `base_sha` and `start_sha`. If not, ask the user to fetch, re-extract against the MR's target branch and check their notes.
-2. Post each entry as a **draft note**, which only the user sees until they submit their review:
-   ```
-   jq -c '.[]' .spark-joy/<run>/comments.json | while IFS= read -r n; do
-     printf '%s' "$n" | glab api --method POST "projects/:fullpath/merge_requests/<iid>/draft_notes" --input -
-   done
-   ```
-
-**Stacks.** On a run from `spark-joy stack`, `comments` writes one `comments-<n>.json` per PR or MR that has notes, and prints each one's number and head commit (the forge comes from the run, so `--gitlab` isn't needed). Do the steps above once per file, against that PR or MR: check its head, then post that file to that PR's `reviews` or that MR's `draft_notes`. Never post one PR's file to another.
-
-Never submit, publish or approve the review. Reply with each PR/MR link, its comment count, and that it stays pending until they submit it.
+If your sandbox can't reach the forge, give the user `spark-joy comments --post` to run. Never post the notes another way, and never submit, publish or approve the review. Reply with what it printed: each PR/MR link and its comment count, and that it stays pending until they submit it.
 
 On other hosts, offer `spark-joy export` for the user to paste.
 
@@ -204,7 +196,7 @@ Then:
 2. `spark-joy serve` in the background, so the user can preview the PRs.
 3. `spark-joy split`: a dry run that checks the PRs add up to exactly the original changes.
 4. If the repo has a fast test command: `spark-joy split --check "<install && test>"`. Each PR runs in a fresh worktree, so include the install step. Fix the plan if a PR fails.
-5. Ask the user, then run `spark-joy split --apply`. It creates local branches only and leaves the working tree alone. Reply with the branch list and the path to `prs.md`. Never push.
+5. Ask the user, then run `spark-joy split --apply` (or give it to them if your sandbox can't write to `.git`). It creates local branches only and leaves the working tree alone. Reply with the branch list and the path to `prs.md`. Never push.
 
 ## Stacked PRs
 
@@ -215,9 +207,9 @@ spark-joy stack <n or URL>          # any PR in the stack; spark-joy finds the r
 spark-joy stack --prs 12,13,14      # exactly these, bottom first
 ```
 
-It fetches each PR's head, diffs it against the PR below it, and writes the plan itself: the `stack` strategy, one chunk per PR, titled and described by the PR. Pass on any `warn` lines (a fork in the stack, a merged PR). You may add `risk`, `riskReason` and `reviewFocus` to its chunks after agreeing risk as in step 3.
+It fetches each PR's head, diffs it against the PR below it, and writes the plan itself: the `stack` strategy, one chunk per PR, titled and described by the PR. Pass on any `warn` lines (a fork in the stack, a merged PR). If your sandbox can't reach the forge, give the user the command; its `next:` line tells them to come back with `/spark-joy break up <run>` when a PR is big. You may add `risk`, `riskReason` and `reviewFocus` to its chunks after agreeing risk as in step 3.
 
-**Break up big PRs.** If any PR is over 300 changed lines, or the user asks, add `layers` and `features` strategies after `stack`, as in step 4, plus `features`. Read with `outline` and `show` (`--run <run>`). Rules on top of step 4:
+**Break up big PRs.** If `stack` or `status` says to (a PR is over 300 changed lines), or the user asks, add `layers` and `features` strategies after `stack`, as in step 4, plus `features`. Read with `outline` and `show` (`--run <run>`). Rules on top of step 4:
 - Each chunk holds hunks of one PR only: each PR is diffed against the one below, so line numbers differ between PRs.
 - Chunks go PR by PR, bottom first; a PR's chunks stay together. A PR of 300 lines or less is one chunk.
 - No `skim`: put mechanical hunks in a `mechanical` chunk of their PR.
