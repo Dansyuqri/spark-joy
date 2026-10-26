@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
+import { parsePrKey } from "../../shared/derive";
 import { ReviewState } from "../../shared/schema";
 import { validatePlan } from "../../shared/validate";
 import { exportMarkdown } from "./export";
@@ -91,7 +92,7 @@ export async function serve(opts: ServeOptions): Promise<{ url: string; close: (
       if (url.pathname === "/api/file" && req.method === "GET") {
         const path = url.searchParams.get("path") ?? "";
         // Stack runs: which PR's version of the file.
-        const pr = url.searchParams.has("pr") ? Number(url.searchParams.get("pr")) : undefined;
+        const pr = parsePrKey(url.searchParams.get("pr"));
         const [meta, hunks] = await Promise.all([readMeta(paths), readHunks(paths)]);
         const hs = hunks.filter((h) => h.file === path && (pr === undefined || h.pr === pr));
         if (!hs.length || hs[0]!.status === "deleted" || hs.some((h) => h.flags.includes("binary")))

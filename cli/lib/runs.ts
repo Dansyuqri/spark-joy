@@ -37,7 +37,8 @@ export function runPaths(root: string, name: string): RunPaths {
 }
 
 // Stack runs: the notes for one PR or MR in the stack.
-export const stackCommentsPath = (p: RunPaths, n: number) => join(p.dir, `comments-${n}.json`);
+// A PR in another repo is named by its key, e.g. comments-other-repo-4.json.
+export const stackCommentsPath = (p: RunPaths, n: number | string) => join(p.dir, `comments-${slug(String(n))}.json`);
 
 export async function ensureRunsDir(root: string): Promise<void> {
   const dir = join(root, RUNS_DIR);

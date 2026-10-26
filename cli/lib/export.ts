@@ -10,7 +10,7 @@ import {
   strategyView,
   type ChunkStatus,
 } from "../../shared/derive";
-import type { Hunk, Meta, Plan, ReviewState } from "../../shared/schema";
+import type { Hunk, Meta, Plan, PrKey, ReviewState } from "../../shared/schema";
 
 const MARK: Record<ChunkStatus, string> = {
   done: "[x]",
@@ -27,7 +27,7 @@ export function exportMarkdown(meta: Meta, hunks: readonly Hunk[], plan: Plan, s
   const pct = p.linesTotal ? Math.round((100 * p.linesDone) / p.linesTotal) : 100;
   const out: string[] = [];
   // In a stack, the PR a line note is on, since line numbers differ between PRs.
-  const on = (pr: number | undefined) => (pr === undefined ? "" : `${prRef(meta, pr)} `);
+  const on = (pr: PrKey | undefined) => (pr === undefined ? "" : `${prRef(meta, pr)} `);
 
   out.push(`# Review: ${plan.title ?? meta.branch}`, "");
   out.push(`${p.done}/${p.total} chunks · ${pct}% lines · \`${meta.base}\` → ${headLabel(meta)}`, "");

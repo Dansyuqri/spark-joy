@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { prKey } from "../../shared/derive";
 import type { DraftNote, ReviewPayload } from "./comments";
 
 export type ForgeKind = "github" | "gitlab";
@@ -22,6 +23,8 @@ export interface ForgePR {
   state: "open" | "closed" | "merged";
   // From another repo, so no PR in this repo can be based on it.
   fork: boolean;
+  // Related PRs: set when the PR is in another repo than the run's own.
+  repo?: Remote;
   // GitLab only: the SHAs a draft note's position must name.
   diffRefs?: { base: string; start: string; head: string };
 }
@@ -68,6 +71,55 @@ export function parsePrArg(arg: string, remote: Remote): number {
   return Number(url[3]);
 }
 
+// A PR or MR in any repo.
+export interface PrRef {
+  remote: Remote;
+  number: number;
+}
+
+export const sameRepo = (a: Remote, b: Remote) => a.host === b.host && a.path.toLowerCase() === b.path.toLowerCase();
+
+const FORGE_NAME: Record<ForgeKind, string> = { github: "GitHub", gitlab: "GitLab" };
+
+// A PR or MR URL: GitLab's have "merge_requests" in them, GitHub's "pull".
+const PR_URL = /https?:\/\/([^/\s)]+)\/([^\s)]+?)\/(?:-\/)?(pull|merge_requests)\/(\d+)/;
+const urlRef = (m: RegExpExecArray | RegExpMatchArray): PrRef => ({
+  remote: { forge: m[3] === "pull" ? "github" : "gitlab", host: m[1]!.toLowerCase(), path: m[2]! },
+  number: Number(m[4]),
+});
+
+// How a PR is written from `home`: "#12" in it, "other/repo#4" on its host,
+// "host/other/repo#4" on another one.
+export const refName = (home: Remote, ref: PrRef): string =>
+  sameRepo(home, ref.remote) ? `${ref.remote.forge === "gitlab" ? "!" : "#"}${ref.number}` : String(prKey(ref.remote.forge, refEntry(home, ref)));
+
+// "PR #12", "PR other/repo#4", "MR !7".
+export const refLabel = (home: Remote, ref: PrRef) => `${home.forge === "gitlab" ? "MR" : "PR"} ${refName(home, ref)}`;
+
+// The repo fields a run keeps for a PR: none for one in its own repo.
+export const refEntry = (home: Remote, ref: PrRef) => ({
+  number: ref.number,
+  ...(!sameRepo(home, ref.remote) && { repo: ref.remote.path, ...(ref.remote.host !== home.host && { host: ref.remote.host }) }),
+});
+
+const refUrl = (ref: PrRef) =>
+  `https://${ref.remote.host}/${ref.remote.path}/${ref.remote.forge === "gitlab" ? "-/merge_requests" : "pull"}/${ref.number}`;
+
+// A PR anywhere: a number, "#12", "!12", "other/repo#4", or a PR/MR URL.
+export function parsePrRef(arg: string, remote: Remote): PrRef {
+  const text = arg.trim();
+  const plain = /^[#!]?(\d+)$/.exec(text);
+  if (plain) return { remote, number: Number(plain[1]) };
+  const short = /^([\w.-]+(?:\/[\w.-]+)+)([#!])(\d+)$/.exec(text);
+  if (short) return { remote: sameRepo(remote, { ...remote, path: short[1]! }) ? remote : { ...remote, path: short[1]! }, number: Number(short[3]) };
+  const url = new RegExp(`^${PR_URL.source}(?:[/?#].*)?$`).exec(text);
+  if (!url) throw new Error(`expected a PR number, other/repo#12 or a PR URL, got ${arg}`);
+  const ref = urlRef(url);
+  if (ref.remote.forge !== remote.forge)
+    throw new Error(`${arg} is on ${FORGE_NAME[ref.remote.forge]}, but ${remote.path} is on ${FORGE_NAME[remote.forge]}`);
+  return sameRepo(remote, ref.remote) ? { remote, number: ref.number } : ref;
+}
+
 // The chain through `start`: down while a PR's base is another open PR's head,
 // up while an open PR is based on this one's head.
 export function walkStack(start: ForgePR, open: readonly ForgePR[]): { prs: ForgePR[]; warnings: string[] } {
@@ -95,51 +147,96 @@ export function walkStack(start: ForgePR, open: readonly ForgePR[]): { prs: Forg
 }
 
 // PRs a description names on a "Relates to" line, e.g. "Relates to #12, #15",
-// "Related: !7" or a PR URL. `elsewhere` holds refs to other repos, which a run
-// can't load.
-export function parseRelated(body: string, remote: Remote): { prs: number[]; elsewhere: string[] } {
-  const prs: number[] = [];
-  const elsewhere: string[] = [];
+// "Related: !7", "other/repo#4" or a PR URL, each with the text that named it.
+function scanRelated(body: string, remote: Remote): { ref: PrRef; text: string }[] {
+  const out: { ref: PrRef; text: string }[] = [];
   const sigil = remote.forge === "gitlab" ? "!" : "#";
   for (const line of body.split(/\r?\n/)) {
     const text = line.replace(/\*\*|__/g, "").replace(/^\s*(?:[-*>]\s*)*/, "");
     // The refs must follow straight away, so "Related work lands in #5" isn't one.
     const m = /^(?:relates?\s+to|related(?:\s+to|\s+(?:prs?|mrs?|pull requests?|merge requests?))?)\s*:?\s+((?:[#!\[(]|https?:|[\w.-]+\/[\w.-]+[#!]).*)$/i.exec(text);
     if (!m) continue;
-    const add = (n: number) => !prs.includes(n) && prs.push(n);
-    for (const u of m[1]!.matchAll(/https?:\/\/([^/\s)]+)\/([^\s)]+?)\/(?:-\/)?(?:pull|merge_requests)\/(\d+)/g)) {
-      if (u[1]!.toLowerCase() === remote.host && u[2]!.toLowerCase() === remote.path.toLowerCase()) add(Number(u[3]));
-      else elsewhere.push(u[0]);
+    for (const u of m[1]!.matchAll(new RegExp(PR_URL.source, "g"))) {
+      const ref = urlRef(u);
+      out.push({ ref: sameRepo(remote, ref.remote) ? { remote, number: ref.number } : ref, text: u[0] });
     }
     // Short refs, outside URLs: "#12", "!12", or "owner/repo#12" for another repo.
     const short = m[1]!.replace(/https?:\/\/\S+/g, " ");
     for (const r of short.matchAll(new RegExp(`(?:^|[\\s,(\\[])([\\w.-]+(?:/[\\w.-]+)+)?\\${sigil}(\\d+)\\b`, "g"))) {
-      if (!r[1] || r[1].toLowerCase() === remote.path.toLowerCase()) add(Number(r[2]));
-      else elsewhere.push(`${r[1]}${sigil}${r[2]}`);
+      const other = r[1] && r[1].toLowerCase() !== remote.path.toLowerCase();
+      out.push({ ref: { remote: other ? { ...remote, path: r[1]! } : remote, number: Number(r[2]) }, text: `${r[1] ?? ""}${sigil}${r[2]}` });
     }
+  }
+  return out;
+}
+
+// Every PR a description relates to, in whichever repo.
+export function relatedRefs(body: string, remote: Remote): PrRef[] {
+  const seen = new Set<string>();
+  return scanRelated(body, remote)
+    .map((x) => x.ref)
+    .filter((r) => {
+      const k = refKey(r);
+      return !seen.has(k) && !!seen.add(k);
+    });
+}
+
+// The same, split into PRs in `remote` and refs to other repos.
+export function parseRelated(body: string, remote: Remote): { prs: number[]; elsewhere: string[] } {
+  const prs: number[] = [];
+  const elsewhere: string[] = [];
+  for (const { ref, text } of scanRelated(body, remote)) {
+    if (!sameRepo(remote, ref.remote)) elsewhere.push(text);
+    else if (!prs.includes(ref.number)) prs.push(ref.number);
   }
   return { prs, elsewhere };
 }
 
+const refKey = (r: PrRef) => `${r.remote.forge}:${r.remote.host}/${r.remote.path.toLowerCase()}#${r.number}`;
+
 export const RELATED_LIMIT = 25;
 
 // Every PR reachable from `start` through "Relates to" links, in either
-// direction: a PR's own links, and open PRs whose links name it.
+// direction: a PR's own links, and open PRs whose links name it. With
+// `forgeFor`, links lead into other repos on the same kind of forge, and
+// their open PRs are searched for links back too; without it, they're only
+// named.
 export async function walkRelated(
   start: ForgePR,
   forge: Pick<Forge, "get" | "listOpen" | "remote">,
+  forgeFor?: (remote: Remote) => Pick<Forge, "get" | "listOpen" | "remote">,
 ): Promise<{ prs: ForgePR[]; warnings: string[] }> {
-  const remote = forge.remote;
-  const name = (n: number) => prName(remote.forge, n);
+  const home = forge.remote;
+  const unit = home.forge === "gitlab" ? "MR" : "PR";
   const warnings: string[] = [];
-  const open = await forge.listOpen();
-  const known = new Map(open.map((p) => [p.number, p]));
-  known.set(start.number, start);
-  const parsed = new Map<number, ReturnType<typeof parseRelated>>();
-  const links = (p: ForgePR) => parsed.get(p.number) ?? parsed.set(p.number, parseRelated(p.body, remote)).get(p.number)!;
+  const remoteOf = (p: ForgePR) => p.repo ?? home;
+  const refOf = (p: ForgePR): PrRef => ({ remote: remoteOf(p), number: p.number });
+  const label = (p: ForgePR) => refLabel(home, refOf(p));
+
+  // Each repo's forge and open PRs, looked up once it's reached.
+  const repos = new Map<string, { forge: Pick<Forge, "get" | "listOpen" | "remote">; open: ForgePR[] }>();
+  const repoKey = (r: Remote) => `${r.host}/${r.path.toLowerCase()}`;
+  const repo = async (r: Remote) => {
+    const k = repoKey(r);
+    if (!repos.has(k)) {
+      const f = sameRepo(r, home) ? forge : forgeFor!(r);
+      const local = (p: ForgePR) => (sameRepo(r, home) ? p : { ...p, repo: r });
+      repos.set(k, { forge: { remote: r, get: async (n) => local(await f.get(n)), listOpen: f.listOpen }, open: (await f.listOpen().catch(() => [])).map(local) });
+    }
+    return repos.get(k)!;
+  };
+  await repo(home);
+  if (start.repo) await repo(start.repo);
+
+  const parsed = new Map<string, string[]>();
+  const links = (p: ForgePR) => {
+    const k = refKey(refOf(p));
+    if (!parsed.has(k)) parsed.set(k, relatedRefs(p.body, remoteOf(p)).map(refKey));
+    return parsed.get(k)!;
+  };
   const prs: ForgePR[] = [];
   const queue = [start];
-  const seen = new Set([start.number]);
+  const seen = new Set([refKey(refOf(start))]);
   const elsewhere = new Set<string>();
   while (queue.length) {
     const cur = queue.shift()!;
@@ -148,15 +245,32 @@ export async function walkRelated(
       break;
     }
     prs.push(cur);
-    const own = links(cur);
-    own.elsewhere.forEach((e) => elsewhere.add(e));
-    const back = open.filter((p) => links(p).prs.includes(cur.number)).map((p) => p.number);
-    for (const n of [...own.prs, ...back]) {
-      if (seen.has(n)) continue;
-      seen.add(n);
-      const p = known.get(n) ?? (await forge.get(n).catch(() => undefined));
-      if (!p) warnings.push(`${name(cur.number)} links to ${name(n)}, which isn't a ${remote.forge === "gitlab" ? "MR" : "PR"} in ${remote.path}; skipped`);
-      else if (p.fork) warnings.push(`${name(n)} is from a fork; skipped`);
+    const curKey = refKey(refOf(cur));
+    const own = scanRelated(cur.body, remoteOf(cur));
+    const open = [...repos.values()].flatMap((r) => r.open);
+    const back = open.filter((p) => links(p).includes(curKey)).map((p) => ({ ref: refOf(p), text: "", known: p }));
+    for (const { ref, text, known } of [...own.map((x) => ({ ...x, known: undefined as ForgePR | undefined })), ...back]) {
+      const k = refKey(ref);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const here = sameRepo(ref.remote, home);
+      if (!here && !forgeFor) {
+        elsewhere.add(text);
+        continue;
+      }
+      if (ref.remote.forge !== home.forge) {
+        warnings.push(`${label(cur)} links to ${text || refUrl(ref)}, which is on ${FORGE_NAME[ref.remote.forge]}, not ${FORGE_NAME[home.forge]}; skipped`);
+        continue;
+      }
+      const r = await repo(ref.remote).catch(() => undefined);
+      const p = known ?? (r?.open.find((x) => x.number === ref.number) ?? (await r?.forge.get(ref.number).catch(() => undefined)));
+      if (!p)
+        warnings.push(
+          here
+            ? `${label(cur)} links to ${refLabel(home, ref)}, which isn't a ${unit} in ${home.path}; skipped`
+            : `${label(cur)} links to ${refName(home, ref)}, which couldn't be loaded; skipped`,
+        );
+      else if (p.fork) warnings.push(`${label(p)} is from a fork; skipped`);
       else queue.push(p);
     }
   }
@@ -165,8 +279,15 @@ export async function walkRelated(
 }
 
 // The line `link` adds to a description.
-export const relatedLine = (forge: ForgeKind, ns: readonly number[]) =>
-  `Relates to ${ns.map((n) => `${forge === "gitlab" ? "!" : "#"}${n}`).join(", ")}`;
+export const relatedLine = (home: Remote, refs: readonly PrRef[]) => `Relates to ${refs.map((r) => refName(home, r)).join(", ")}`;
+
+// Where to fetch another repo from: the home remote's URL with the other
+// repo's path in it on the same host, so ssh stays ssh; https elsewhere.
+export function cloneUrl(homeUrl: string, home: Remote, other: Remote): string {
+  const at = homeUrl.toLowerCase().lastIndexOf(home.path.toLowerCase());
+  if (other.host === home.host && at >= 0) return homeUrl.slice(0, at) + other.path + homeUrl.slice(at + home.path.length);
+  return `https://${other.host}/${other.path}.git`;
+}
 
 // Every JSON value in `text`, which paginated CLI output prints back to back.
 export function parseJsonStream(text: string): unknown[] {
