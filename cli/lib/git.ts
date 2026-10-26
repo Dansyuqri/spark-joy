@@ -2,7 +2,8 @@ import { execFile } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Meta } from "../../shared/schema";
+import { stackPr } from "../../shared/derive";
+import type { Meta, PrKey } from "../../shared/schema";
 
 const exec = promisify(execFile);
 
@@ -87,11 +88,11 @@ export async function generatedByAttr(cwd: string, files: string[]): Promise<Set
 
 // A changed file as of the diff's end: HEAD, the index, or the working tree.
 // For a stack, the head of PR `pr` (the top PR when not given).
-export async function fileText(root: string, meta: Meta, path: string, pr?: number): Promise<string> {
+export async function fileText(root: string, meta: Meta, path: string, pr?: PrKey): Promise<string> {
   const source = meta.source ?? (meta.working ? "working" : "pr");
   if (source === "stack") {
     const prs = meta.stack?.prs ?? [];
-    const at = pr === undefined ? prs.at(-1) : prs.find((p) => p.number === pr);
+    const at = pr === undefined ? prs.at(-1) : stackPr(meta, pr);
     if (!at) throw new Error(`no PR ${pr} in this stack`);
     return git(root, ["show", `${at.headSha}:${path}`]);
   }

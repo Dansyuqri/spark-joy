@@ -228,9 +228,10 @@ Use it when the user wants to review PRs or MRs that belong together but aren't 
 spark-joy related <n or URL>        # this PR and every one it relates to
 spark-joy related --prs 12,15,20    # exactly these
 spark-joy link 12 15 20             # add "Relates to #15, #20" to #12's description
+spark-joy link 12 acme/web#7        # PRs in other repos on the same forge work anywhere a PR does
 ```
 
-`related` follows "Relates to #12" (or "Related:", a PR URL, `!12` on GitLab) lines in descriptions, both ways and onward, and loads every PR it reaches into one run, `pr-<n>-related`. Each PR is diffed against what it targets: its base branch, or the PR in the run whose branch it's based on. Pass on `warn` lines (links to other repos aren't loaded; a PR with no links). The plan is written, and notes post to their own PR, as in [Stacked PRs](#stacked-prs).
+`related` follows "Relates to #12" (or "Related:", a PR URL, `!12` on GitLab) lines in descriptions, both ways and onward, and loads every PR it reaches into one run, `pr-<n>-related`. Each PR is diffed against what it targets: its base branch, or the PR in the run whose branch it's based on. PRs in other repos on the same forge (`acme/web#7`, `group/api!3`, a PR URL) are loaded too, named by repo, and their files read `acme/web:path` in Across PRs; treat each repo's files as separate even when paths match. Pass on `warn` lines (a link that couldn't be loaded or is on another forge; a PR with no links). The plan is written, and notes post to their own PR, as in [Stacked PRs](#stacked-prs).
 
 **Group across PRs.** When `related` or `status` says to (more than one PR), or the user asks, read every PR with `outline` and `show` (`--run <run>`) and add two strategies after `stack`, as in step 4, plus `features`:
 - `across-layers`: the foundations of every PR first (schemas, shared types, APIs), then what builds on them, wherever they are.

@@ -1,10 +1,12 @@
 import type { DraftNote, ReviewPayload } from "./comments";
-import { prName, type Forge } from "./forge";
+import { refLabel, type Forge, type Remote } from "./forge";
 
 // One PR or MR's notes, as `comments` writes them, and the commits they were
 // left on.
 export interface PostTarget {
   number: number;
+  // Set for a related PR in another repo than the run's.
+  remote?: Remote;
   headSha: string;
   base: string;
   start: string;
@@ -13,6 +15,8 @@ export interface PostTarget {
 
 export interface Posted {
   number: number;
+  // "PR #12", or "PR other/repo#4" in another repo.
+  label: string;
   url: string;
   count: number;
 }
@@ -20,13 +24,16 @@ export interface Posted {
 const short = (sha: string) => sha.slice(0, 7);
 
 // Checks every PR first and posts only if all still match what was reviewed,
-// so a stack is never half posted because one PR moved on.
-export async function postNotes(forge: Forge, targets: readonly PostTarget[]): Promise<Posted[]> {
+// so a stack is never half posted because one PR moved on. A PR in another
+// repo is posted through `forgeFor`.
+export async function postNotes(forge: Forge, targets: readonly PostTarget[], forgeFor?: (remote: Remote) => Forge): Promise<Posted[]> {
   const kind = forge.remote.forge;
-  const prs = await Promise.all(targets.map((t) => forge.get(t.number)));
+  const forgeOf = (t: PostTarget) => (t.remote ? forgeFor!(t.remote) : forge);
+  const label = (t: PostTarget) => refLabel(forge.remote, { remote: t.remote ?? forge.remote, number: t.number });
+  const prs = await Promise.all(targets.map((t) => forgeOf(t).get(t.number)));
   const stale = targets.flatMap((t, i) => {
     const pr = prs[i]!;
-    const name = prName(kind, t.number);
+    const name = label(t);
     if (pr.state !== "open") return [`${name} is ${pr.state}`];
     if (pr.headSha !== t.headSha) return [`${name} is at ${short(pr.headSha)} but you reviewed ${short(t.headSha)}`];
     const positioned = Array.isArray(t.body) && t.body.some((n) => n.position);
@@ -39,10 +46,11 @@ export async function postNotes(forge: Forge, targets: readonly PostTarget[]): P
 
   const out: Posted[] = [];
   for (const [i, t] of targets.entries()) {
-    if (Array.isArray(t.body)) for (const note of t.body) await forge.postDraftNote(t.number, note);
-    else await forge.postReview(t.number, t.body);
+    const f = forgeOf(t);
+    if (Array.isArray(t.body)) for (const note of t.body) await f.postDraftNote(t.number, note);
+    else await f.postReview(t.number, t.body);
     const count = Array.isArray(t.body) ? t.body.length : t.body.comments.length + (t.body.body ? 1 : 0);
-    out.push({ number: t.number, url: prs[i]!.url, count });
+    out.push({ number: t.number, label: label(t), url: prs[i]!.url, count });
   }
   return out;
 }

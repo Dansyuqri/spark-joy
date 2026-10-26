@@ -5,7 +5,8 @@ import { parseDiff, type FileDiff, type RawHunk } from "./diff";
 import { fileFlags, hasGeneratedMarker, whitespaceOnly } from "./classify";
 import { splitHunk } from "./split";
 import { computeLinks } from "./symbols";
-import { headRef, prName, walkRelated, walkStack, type Forge, type ForgePR } from "./forge";
+import { prKey } from "../../shared/derive";
+import { headRef, prName, refEntry, refLabel, sameRepo, walkRelated, walkStack, type Forge, type ForgePR, type PrRef, type Remote } from "./forge";
 import * as g from "./git";
 import { ensureRunsDir, readHunks, readPlanRaw, runPaths, slug, writeJson, type RunPaths } from "./runs";
 
@@ -145,12 +146,15 @@ export interface StackOptions {
   // The git remote the PRs live on.
   remote: string;
   // Walk the stack through this PR...
-  start?: number;
+  start?: number | PrRef;
   // ...or take exactly these, bottom first.
-  prs?: number[];
+  prs?: (number | PrRef)[];
   // Related PRs: follow "Relates to" links from `start` instead of base
   // branches, and diff each PR against what it targets.
   related?: boolean;
+  // Related PRs in other repos: their forge, and the URL to fetch them from.
+  forgeFor?: (remote: Remote) => Forge;
+  fetchUrl?: (remote: Remote) => string;
   run?: string;
   splitAt?: number;
 }
@@ -173,21 +177,23 @@ function offsetIds(hunks: Hunk[], offset: number): Hunk[] {
 export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly ForgePR[], previous?: Plan, unchanged = false): Plan {
   const forge = meta.stack?.forge ?? "github";
   const old = new Map((previous?.strategies[0]?.chunks ?? []).map((c) => [c.id, c]));
+  const home: Remote = { forge, host: meta.stack?.host ?? "", path: meta.stack?.repo ?? "" };
   const chunks = prs.map((p) => {
-    const id = `pr-${p.number}`;
+    const key = prKey(forge, refEntry(home, { remote: p.repo ?? home, number: p.number }));
+    const id = `pr-${String(key).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
     const was = old.get(id);
     return {
       id,
-      title: p.title.trim() || prName(forge, p.number),
+      title: p.title.trim() || refLabel(home, { remote: p.repo ?? home, number: p.number }),
       intent: p.body.trim() || "No description.",
       kind: was?.kind ?? ("core" as const),
-      hunks: hunks.filter((h) => h.pr === p.number).map((h) => h.id),
+      hunks: hunks.filter((h) => h.pr === key).map((h) => h.id),
       dependsOn: [],
       reviewFocus: was?.reviewFocus ?? [],
       risk: was?.risk ?? ("low" as const),
       ...(was?.riskReason ? { riskReason: was.riskReason } : {}),
       branch: p.head,
-      pr: { number: p.number, url: p.url },
+      pr: { number: key, url: p.url },
     };
   });
   const keep = unchanged ? previous : undefined;
@@ -202,14 +208,17 @@ export function stackPlan(meta: Meta, hunks: readonly Hunk[], prs: readonly Forg
   };
 }
 
+// A branch in the PR's repo: related PRs from several repos may share names.
+const branchKey = (p: ForgePR, branch: string) => `${p.repo ? `${p.repo.host}/${p.repo.path.toLowerCase()}` : ""}:${branch}`;
+
 // Any PR another one builds on goes first, so a PR's changes come after the
 // ones it needs. Otherwise the order is kept.
 export function parentsFirst(prs: readonly ForgePR[]): ForgePR[] {
-  const byHead = new Map(prs.map((p) => [p.head, p]));
+  const byHead = new Map(prs.map((p) => [branchKey(p, p.head), p]));
   const out: ForgePR[] = [];
   const place = (p: ForgePR, depth: number) => {
     if (out.includes(p)) return;
-    const parent = byHead.get(p.base);
+    const parent = byHead.get(branchKey(p, p.base));
     // The depth stops at a cycle of PRs based on each other.
     if (parent && parent !== p && depth < prs.length) place(parent, depth + 1);
     if (!out.includes(p)) out.push(p);
@@ -221,9 +230,20 @@ export function parentsFirst(prs: readonly ForgePR[]): ForgePR[] {
 // Which PRs to load: a stack follows base branches, related PRs follow
 // "Relates to" links, and --prs takes exactly the ones given.
 async function pickPrs(o: StackOptions): Promise<{ prs: ForgePR[]; warnings: string[] }> {
-  const name = (n: number) => prName(o.forge.remote.forge, n);
+  const home = o.forge.remote;
+  const name = (n: number) => prName(home.forge, n);
+  const ref = (x: number | PrRef): PrRef => (typeof x === "number" ? { remote: home, number: x } : x);
+  const all = [...(o.start === undefined ? [] : [o.start]), ...(o.prs ?? [])].map(ref);
+  const away = all.find((r) => !sameRepo(r.remote, home));
+  if (away && !o.related) throw new Error(`${refLabel(home, away)} is in another repo; a stack is in one repo, so load it with \`related\``);
+  if (away && !o.forgeFor) throw new Error(`${refLabel(home, away)} is in another repo, and there's no way to reach it`);
+  // A PR, marked with its repo when that isn't this one.
+  const get = async (r: PrRef) => {
+    if (sameRepo(r.remote, home)) return o.forge.get(r.number);
+    return { ...(await o.forgeFor!(r.remote).get(r.number)), repo: r.remote };
+  };
   if (o.prs?.length) {
-    const prs = await Promise.all(o.prs.map((n) => o.forge.get(n)));
+    const prs = await Promise.all(o.prs.map((x) => get(ref(x))));
     if (o.related) return { prs: parentsFirst(prs), warnings: [] };
     const warnings: string[] = [];
     prs.forEach((p, i) => {
@@ -234,14 +254,15 @@ async function pickPrs(o: StackOptions): Promise<{ prs: ForgePR[]; warnings: str
     return { prs, warnings };
   }
   if (o.start === undefined) throw new Error("pass a PR to start from, or --prs");
+  const start = ref(o.start);
   if (o.related) {
-    const walked = await walkRelated(await o.forge.get(o.start), o.forge);
+    const walked = await walkRelated(await get(start), o.forge, o.forgeFor);
     if (walked.prs.length === 1)
-      walked.warnings.push(`${name(o.start)} has no "Relates to" links, and no open PR links to it; add one with \`spark-joy link\``);
+      walked.warnings.push(`${refLabel(home, start)} has no "Relates to" links, and no open PR links to it; add one with \`spark-joy link\``);
     return { prs: parentsFirst(walked.prs), warnings: walked.warnings };
   }
-  const [start, open] = await Promise.all([o.forge.get(o.start), o.forge.listOpen()]);
-  return walkStack(start, open);
+  const [first, open] = await Promise.all([o.forge.get(start.number), o.forge.listOpen()]);
+  return walkStack(first, open);
 }
 
 // Fetch each PR's head and diff it against the PR below it (the bottom one
@@ -250,46 +271,66 @@ async function pickPrs(o: StackOptions): Promise<{ prs: ForgePR[]; warnings: str
 // their base branch.
 export async function extractStack(o: StackOptions): Promise<StackResult> {
   const root = await g.repoRoot(o.cwd);
-  const { forge: kind } = o.forge.remote;
-  const name = (n: number) => prName(kind, n);
+  const home = o.forge.remote;
+  const { forge: kind } = home;
   const { prs, warnings } = await pickPrs(o);
-  for (const p of prs) if (p.state !== "open") warnings.push(`${name(p.number)} is ${p.state}`);
+  const refOf = (p: ForgePR): PrRef => ({ remote: p.repo ?? home, number: p.number });
+  const keyOf = (p: ForgePR) => prKey(kind, refEntry(home, refOf(p)));
+  for (const p of prs) if (p.state !== "open") warnings.push(`${refLabel(home, refOf(p))} is ${p.state}`);
 
   const bottom = prs[0]!;
-  const byHead = new Map(prs.filter((p) => !p.fork).map((p) => [p.head, p]));
+  const byHead = new Map(prs.filter((p) => !p.fork).map((p) => [branchKey(p, p.head), p]));
   // Related PRs build on another PR in the run, or on a base branch.
-  const parentOf = (p: ForgePR, i: number) => (o.related ? byHead.get(p.base) : prs[i - 1]);
-  const bases = [...new Set(o.related ? prs.filter((p, i) => !parentOf(p, i)).map((p) => p.base) : [bottom.base])];
-  const baseRef = (b: string) => `refs/remotes/${o.remote}/${b}`;
-  const refOf = (n: number) => `refs/spark-joy/${kind}/${n}`;
-  await g.git(root, [
-    "fetch",
-    "--quiet",
-    "--no-tags",
-    o.remote,
-    ...bases.map((b) => `+refs/heads/${b}:${baseRef(b)}`),
-    ...prs.map((p) => `+${headRef(kind, p.number)}:${refOf(p.number)}`),
-  ]);
+  const parentOf = (p: ForgePR, i: number) => (o.related ? byHead.get(branchKey(p, p.base)) : prs[i - 1]);
+  // This repo's PRs and branches come from the remote, as fetched refs; other
+  // repos' are fetched by URL into refs of their own.
+  const place = (r: Remote) => (sameRepo(r, home) ? "" : `${r.host}/${r.path}/`);
+  const baseRef = (p: ForgePR) => (p.repo ? `refs/spark-joy/base/${place(p.repo)}${p.base}` : `refs/remotes/${o.remote}/${p.base}`);
+  const prRef = (p: ForgePR) => `refs/spark-joy/${kind}/${p.repo ? place(p.repo) : ""}${p.number}`;
+  const groups = new Map<string, { remote: Remote; prs: ForgePR[] }>();
+  for (const p of prs) {
+    const r = p.repo ?? home;
+    const k = place(r);
+    if (!groups.has(k)) groups.set(k, { remote: r, prs: [] });
+    groups.get(k)!.prs.push(p);
+  }
+  for (const [k, group] of groups) {
+    // A stack needs its bottom PR's base; related PRs, the base of each that
+    // doesn't build on another.
+    const bases = new Map(group.prs.filter((p) => (o.related ? !parentOf(p, prs.indexOf(p)) : p === bottom)).map((p) => [p.base, p]));
+    await g.git(root, [
+      "fetch",
+      "--quiet",
+      "--no-tags",
+      k ? (o.fetchUrl ?? ((r: Remote) => `https://${r.host}/${r.path}.git`))(group.remote) : o.remote,
+      ...[...bases.values()].map((p) => `+refs/heads/${p.base}:${baseRef(p)}`),
+      ...group.prs.map((p) => `+${headRef(kind, p.number)}:${prRef(p)}`),
+    ]);
+  }
 
-  const heads = new Map<number, string>();
-  for (const p of prs) heads.set(p.number, await g.revParse(root, refOf(p.number)));
+  const heads = new Map<ForgePR, string>();
+  for (const p of prs) heads.set(p, await g.revParse(root, prRef(p)));
   const hunks: Hunk[] = [];
   const files = new Set<string>();
   const entries: NonNullable<Meta["stack"]>["prs"] = [];
   for (const [i, p] of prs.entries()) {
-    const headSha = heads.get(p.number)!;
+    const headSha = heads.get(p)!;
     const parent = parentOf(p, i);
-    const start = parent ? heads.get(parent.number)! : await g.revParse(root, baseRef(p.base));
+    const start = parent ? heads.get(parent)! : await g.revParse(root, baseRef(p));
     const mb = await g.mergeBase(root, start, headSha);
     const fds = parseDiff(await g.diff(root, mb, headSha));
-    const attr = await g.generatedByAttr(root, fds.map((f) => f.file));
+    // .gitattributes here says nothing about another repo's files.
+    const attr = p.repo ? new Set<string>() : await g.generatedByAttr(root, fds.map((f) => f.file));
     const offset = Math.max(0, ...hunks.map((h) => Number(/^h(\d+)/.exec(h.id)![1])));
-    hunks.push(...offsetIds(buildHunks(fds, attr, o.splitAt), offset).map((h) => ({ ...h, pr: p.number })));
-    for (const f of fds) files.add(f.file);
-    entries.push({ number: p.number, url: p.url, title: p.title, base: p.base, head: p.head, mergeBase: mb, headSha, start });
+    const key = keyOf(p);
+    hunks.push(...offsetIds(buildHunks(fds, attr, o.splitAt), offset).map((h) => ({ ...h, pr: key })));
+    for (const f of fds) files.add(p.repo ? `${place(p.repo)}${f.file}` : f.file);
+    const { number: _, ...repo } = refEntry(home, refOf(p));
+    entries.push({ number: p.number, url: p.url, title: p.title, base: p.base, head: p.head, mergeBase: mb, headSha, start, ...repo });
   }
 
-  const first = o.related ? (o.start ?? o.prs![0]!) : bottom.number;
+  const firstRef = (x: number | PrRef) => (typeof x === "number" ? x : prKey(kind, refEntry(home, x)));
+  const first = o.related ? firstRef(o.start ?? o.prs![0]!) : bottom.number;
   const runName = slug(o.run ?? `${kind === "gitlab" ? "mr" : "pr"}-${first}-${o.related ? "related" : "stack"}`);
   const meta: Meta = {
     run: runName,
@@ -301,7 +342,7 @@ export async function extractStack(o: StackOptions): Promise<StackResult> {
     headSha: entries.at(-1)!.headSha,
     working: false,
     source: "stack",
-    stack: { forge: kind, host: o.forge.remote.host, repo: o.forge.remote.path, ...(o.related && { related: true }), prs: entries },
+    stack: { forge: kind, host: home.host, repo: home.path, ...(o.related && { related: true }), prs: entries },
     createdAt: new Date().toISOString(),
     stats: {
       files: files.size,

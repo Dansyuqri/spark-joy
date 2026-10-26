@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isIgnorable } from "../shared/derive";
 import type { Hunk } from "../shared/schema";
-import type { Forge, ForgePR } from "../cli/lib/forge";
+import type { Forge, ForgePR, Remote } from "../cli/lib/forge";
 
 export function sh(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
@@ -215,4 +215,73 @@ export function relatedRepo() {
     setBody: async (n, body) => void (prs.find((p) => p.number === n)!.body = body),
   };
   return { dir, root, forge, prs };
+}
+
+// relatedRepo plus a second repo, other/repo, on the same host. Its #4 shares
+// a number with o/r's #4 and touches a file named like one in o/r, and #5
+// relates to #4 there. Each repo has its own forge; `fetchUrl` maps a repo to
+// its bare clone.
+export function multiRepo() {
+  const home = relatedRepo();
+  const origin = join(home.dir, "other.git");
+  const work = join(home.dir, "other");
+  sh(home.dir, "init", "-q", "--bare", "-b", "main", origin);
+  sh(home.dir, "init", "-q", "-b", "main", work);
+  for (const [k, v] of [["user.email", "t@example.com"], ["user.name", "T"], ["commit.gpgsign", "false"]]) sh(work, "config", k!, v!);
+  const commit = (msg: string) => {
+    sh(work, "add", "-A");
+    sh(work, "commit", "-qm", msg);
+  };
+  write(work, "src/client.ts", "export const client = 0;\n");
+  commit("base");
+  sh(work, "checkout", "-qb", "use-api");
+  write(work, "src/client.ts", "import { api } from 'o/r';\nexport const client = api;\n");
+  write(work, "src/api.ts", "export const remote = 1;\n");
+  commit("use the api");
+  sh(work, "checkout", "-qb", "docs");
+  write(work, "README.md", "Uses o/r's api.\n");
+  commit("docs");
+  sh(work, "remote", "add", "origin", origin);
+  sh(work, "-c", "push.negotiate=false", "push", "-q", "origin", "main", "use-api", "docs", "use-api:refs/pull/4/head", "docs:refs/pull/5/head");
+
+  const pr = (number: number, base: string, head: string, body: string): ForgePR => ({
+    number,
+    title: `Other ${number}`,
+    body,
+    url: `https://github.com/other/repo/pull/${number}`,
+    base,
+    head,
+    headSha: "",
+    state: "open",
+    fork: false,
+  });
+  const otherPrs = [pr(4, "main", "use-api", "Calls o/r's API."), pr(5, "use-api", "docs", "Relates to #4")];
+  const other: Forge = {
+    remote: { forge: "github", host: "github.com", path: "other/repo" },
+    get: async (n) => {
+      const p = otherPrs.find((p) => p.number === n);
+      if (!p) throw new Error(`no PR ${n}`);
+      return p;
+    },
+    listOpen: async () => otherPrs,
+    postReview: async () => undefined,
+    postDraftNote: async () => undefined,
+    setBody: async (n, body) => void (otherPrs.find((p) => p.number === n)!.body = body),
+  };
+  const forgeFor = (r: Remote): Forge => {
+    if (r.path.toLowerCase() === "o/r") return home.forge;
+    if (r.path.toLowerCase() === "other/repo" && r.host === "github.com") return other;
+    return {
+      remote: r,
+      get: async (n) => {
+        throw new Error(`no PR ${n} in ${r.path}`);
+      },
+      listOpen: async () => [],
+      postReview: async () => undefined,
+      postDraftNote: async () => undefined,
+      setBody: async () => undefined,
+    };
+  };
+  const fetchUrl = (r: Remote) => (r.path === "other/repo" ? origin : join(home.dir, "missing.git"));
+  return { ...home, other, otherPrs, forgeFor, fetchUrl };
 }

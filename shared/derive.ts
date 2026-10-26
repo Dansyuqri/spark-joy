@@ -1,4 +1,4 @@
-import { IGNORABLE_FLAGS, type Chunk, type Feature, type Hunk, type LineNote, type Meta, type Plan, type ReviewState, type Strategy } from "./schema";
+import { IGNORABLE_FLAGS, type Chunk, type PrKey, type Feature, type Hunk, type LineNote, type Meta, type Plan, type ReviewState, type Strategy } from "./schema";
 
 export type ChunkStatus = "done" | "partial" | "todo";
 
@@ -10,7 +10,7 @@ export const changedLines = (hs: readonly Hunk[]): number =>
 
 // What the diff ends at.
 export const headLabel = (meta: Meta): string =>
-  meta.stack ? `${prRef(meta, meta.stack.prs.at(-1)?.number ?? 0)} ${meta.headSha.slice(0, 8)}` : meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
+  meta.stack ? `${prRef(meta, meta.stack.prs.at(-1) ? prKey(meta.stack.forge, meta.stack.prs.at(-1)!) : 0)} ${meta.headSha.slice(0, 8)}` : meta.source === "staged" ? "index" : meta.working ? "working tree" : `HEAD ${meta.headSha.slice(0, 8)}`;
 
 const branchSlug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "pr";
@@ -35,20 +35,40 @@ export const strategyLabel = (s: Strategy): string => LABELS[s.id] ?? s.label ??
 export const unitName = (plan: Plan, meta: Meta): string =>
   plan.mode === "review" ? "chunk" : meta.stack?.forge === "gitlab" ? "MR" : "PR";
 
-// "#12" on GitHub, "!12" on GitLab.
-export const prRef = (meta: Meta, n: number): string => `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`;
+type StackPr = NonNullable<Meta["stack"]>["prs"][number];
+
+// A PR's key in a run: its number, or "other/repo#4" for a related PR in
+// another repo ("host/other/repo#4" on another host, "!4" on GitLab).
+export const prKey = (forge: "github" | "gitlab", p: { number: number; repo?: string; host?: string }): PrKey =>
+  p.repo ? `${p.host ? `${p.host}/` : ""}${p.repo}${forge === "gitlab" ? "!" : "#"}${p.number}` : p.number;
+
+// A PR key read back from a URL: a number, or another repo's "other/repo#4".
+export const parsePrKey = (s: string | null): PrKey | undefined => (!s ? undefined : /^\d+$/.test(s) ? Number(s) : s);
+
+// "#12" on GitHub, "!12" on GitLab; a PR in another repo is its key.
+export const prRef = (meta: Meta, n: PrKey): string => (typeof n === "string" ? n : `${meta.stack?.forge === "gitlab" ? "!" : "#"}${n}`);
+
+// The run's entry for a PR.
+export const stackPr = (meta: Meta, n: PrKey | undefined): StackPr | undefined =>
+  n === undefined ? undefined : meta.stack?.prs.find((p) => prKey(meta.stack!.forge, p) === n);
+
+// Whether two PRs are in the same repo, so one's base can be the other's head.
+export const sameRepoPr = (a: StackPr, b: StackPr) => a.repo === b.repo && a.host === b.host;
+
+// Related PRs: the PR in the run that `p` builds on, if any.
+export const parentPr = (meta: Meta, p: StackPr): StackPr | undefined =>
+  meta.stack?.prs.find((x) => x !== p && x.head === p.base && sameRepoPr(x, p));
 
 // Related PRs: what a PR is diffed against, e.g. "targets main" or "builds on #12".
-export function prTarget(meta: Meta, n: number | undefined): string | undefined {
-  const prs = meta.stack?.related ? meta.stack.prs : [];
-  const p = prs.find((x) => x.number === n);
+export function prTarget(meta: Meta, n: PrKey | undefined): string | undefined {
+  const p = meta.stack?.related ? stackPr(meta, n) : undefined;
   if (!p) return undefined;
-  const parent = prs.find((x) => x.head === p.base && x !== p);
-  return parent ? `builds on ${prRef(meta, parent.number)}` : `targets ${p.base}`;
+  const parent = parentPr(meta, p);
+  return parent ? `builds on ${prRef(meta, prKey(meta.stack!.forge, parent))}` : `targets ${p.base}`;
 }
 
-// Stack mode: the PR's own chunk, by PR number.
-export const prChunk = (plan: Plan, n: number | undefined): Chunk | undefined =>
+// Stack mode: the PR's own chunk, by PR key.
+export const prChunk = (plan: Plan, n: PrKey | undefined): Chunk | undefined =>
   plan.mode === "stack" && n !== undefined ? plan.strategies[0]!.chunks.find((c) => c.pr?.number === n) : undefined;
 
 // Stack mode: whether a strategy breaks the PRs into chunks, so its chunks are
@@ -60,8 +80,15 @@ export const groupedByPr = (plan: Plan, s: Strategy): boolean => plan.mode === "
 // Meant for related PRs, which don't build on each other the way a stack does.
 export const ACROSS_PRS: readonly string[] = ["across-layers", "across-features"];
 
+// The repo a PR key is in: "" for the run's own, "other/repo" for another.
+const prRepo = (k: PrKey | undefined) => (typeof k === "string" ? k.replace(/[#!]\d+$/, "") : "");
+
+// A file as Across PRs follows it: its path, after its repo when that's another
+// one ("other/repo:src/api.ts"), so files that share a path in two repos stay apart.
+export const fileIn = (h: Hunk): string => (prRepo(h.pr) ? `${prRepo(h.pr)}:${h.file}` : h.file);
+
 // The PRs a run of hunks comes from, in the order they first appear.
-export const prsOf = (hs: readonly Hunk[]): number[] => [...new Set(hs.flatMap((h) => (h.pr === undefined ? [] : [h.pr])))];
+export const prsOf = (hs: readonly Hunk[]): PrKey[] => [...new Set(hs.flatMap((h) => (h.pr === undefined ? [] : [h.pr])))];
 
 export const chunkNoteKey = (strategyId: string, chunkId: string): string => `${strategyId}/${chunkId}`;
 
@@ -226,9 +253,11 @@ export interface FileStep {
 // whichever order the reader picked, and `at` is the first chunk of the
 // reader's order that holds the PR's changes to the file (or else any of it).
 export function fileSteps(view: StrategyView, file: string, prs?: StrategyView): FileStep[] {
-  const own = (hs: readonly Hunk[]) => hs.filter((h) => h.file === file).sort((a, b) => a.newStart - b.newStart);
+  const own = (hs: readonly Hunk[]) => hs.filter((h) => fileIn(h) === file).sort((a, b) => a.newStart - b.newStart);
   if (prs) {
-    return prs.chunks.map((p) => {
+    // Only PRs in the file's own repo can change it.
+    const repo = prRepo([...prs.chunks.flatMap((c) => c.hunks), ...prs.skim].find((h) => fileIn(h) === file)?.pr);
+    return prs.chunks.filter((p) => prRepo(p.chunk.pr?.number) === repo).map((p) => {
       const hunks = own(p.hunks);
       const ids = new Set((hunks.length ? hunks : p.hunks).map((h) => h.id));
       const c = view.chunks.find((c) => c.hunks.some((h) => ids.has(h.id)));
@@ -243,5 +272,5 @@ export function fileSteps(view: StrategyView, file: string, prs?: StrategyView):
 
 // Files the view touches, in the order they first appear.
 export function viewFiles(view: StrategyView): string[] {
-  return [...new Set([...view.chunks.flatMap((c) => c.hunks), ...view.skim].map((h) => h.file))];
+  return [...new Set([...view.chunks.flatMap((c) => c.hunks), ...view.skim].map(fileIn))];
 }

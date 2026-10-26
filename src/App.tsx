@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { headLabel, progress, strategyView } from "../shared/derive";
-import type { ReviewState } from "../shared/schema";
+import { headLabel, parsePrKey, progress, strategyView } from "../shared/derive";
+import type { PrKey, ReviewState } from "../shared/schema";
 import { loadRun, saveState, type RunData } from "./api";
 import { FilePage } from "./components/FilePage";
 import { MapPage } from "./components/MapPage";
@@ -15,7 +15,7 @@ export type Route =
   | { page: "review"; chunk: number | "skim"; file?: string; hunk?: string }
   // One file across every chunk; `chunk` is the one to start on, and in a
   // stack `pr` the PR, when that chunk spans several.
-  | { page: "file"; path: string; chunk?: number | "skim"; pr?: number }
+  | { page: "file"; path: string; chunk?: number | "skim"; pr?: PrKey }
   | { page: "summary" };
 
 const chunkArg = (arg: string | undefined) => Math.max(0, Number(arg ?? 1) - 1) || 0;
@@ -29,8 +29,8 @@ function parseRoute(hash: string): Route | undefined {
   if (page === "file") {
     const q = new URLSearchParams(query);
     const at = q.get("at") ?? undefined;
-    const pr = Number(q.get("pr")) || undefined;
-    return { page: "file", path: q.get("path") ?? "", chunk: at === "skim" ? "skim" : at ? chunkArg(at) : undefined, ...(pr ? { pr } : {}) };
+    const pr = parsePrKey(q.get("pr"));
+    return { page: "file", path: q.get("path") ?? "", chunk: at === "skim" ? "skim" : at ? chunkArg(at) : undefined, ...(pr !== undefined ? { pr } : {}) };
   }
   if (page === "review") {
     const q = new URLSearchParams(query);

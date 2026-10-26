@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { validatePlan } from "../../shared/validate";
-import type { Hunk, Meta, ReviewState } from "../../shared/schema";
-import { prName } from "./forge";
+import { prKey, prRef } from "../../shared/derive";
+import type { Hunk, Meta, PrKey, ReviewState } from "../../shared/schema";
 import { readHunks, readJson, readMeta, readPlanRaw, readState, type RunPaths } from "./runs";
 
 // What to do after a command: a command for the terminal, or a line to give
@@ -29,9 +29,10 @@ export const hasNotes = (s: ReviewState) =>
   s.lineNotes.some((n) => n.text.trim()) || Object.values(s.chunkNotes).some((n) => n.trim());
 
 // PRs in a stack over the size worth breaking up, with their changed lines.
-export function bigPrs(meta: Meta, hunks: readonly Hunk[]): { number: number; lines: number }[] {
+export function bigPrs(meta: Meta, hunks: readonly Hunk[]): { number: PrKey; lines: number }[] {
   return (meta.stack?.prs ?? [])
-    .map((p) => ({ number: p.number, lines: hunks.filter((h) => h.pr === p.number).reduce((n, h) => n + h.added + h.removed, 0) }))
+    .map((p) => prKey(meta.stack!.forge, p))
+    .map((k) => ({ number: k, lines: hunks.filter((h) => h.pr === k).reduce((n, h) => n + h.added + h.removed, 0) }))
     .filter((p) => p.lines > BREAK_UP_OVER);
 }
 
@@ -69,10 +70,10 @@ export async function runStatus(p: RunPaths): Promise<Status> {
   const brokenUp = plan.strategies.length > 1;
   const state = await readState(p);
   const notes = hasNotes(state);
-  const posted = (await exists(postedPath(p))) ? ((await readJson(postedPath(p))) as { at: string; prs: number[] }) : undefined;
+  const posted = (await exists(postedPath(p))) ? ((await readJson(postedPath(p))) as { at: string; prs: PrKey[] }) : undefined;
   if (posted) {
     const forge = meta.stack?.forge ?? "github";
-    lines.push(`notes posted ${posted.at.slice(0, 16).replace("T", " ")} to ${posted.prs.map((n) => prName(forge, n)).join(", ")}, pending until you submit`);
+    lines.push(`notes posted ${posted.at.slice(0, 16).replace("T", " ")} to ${posted.prs.map((n) => `${forge === "gitlab" ? "MR" : "PR"} ${prRef(meta, n)}`).join(", ")}, pending until you submit`);
     return { lines, next: [] };
   }
   if (notes) {
@@ -96,7 +97,7 @@ export async function runStatus(p: RunPaths): Promise<Status> {
     };
   if (big.length && !brokenUp) {
     const forge = meta.stack!.forge;
-    const which = big.map((b) => `${prName(forge, b.number)} is ${b.lines} lines`).join(", ");
+    const which = big.map((b) => `${forge === "gitlab" ? "MR" : "PR"} ${prRef(meta, b.number)} is ${b.lines} lines`).join(", ");
     return {
       lines,
       next: [

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { extract, extractStack } from "../../cli/lib/extract";
 import { readPlanRaw, readState, runPaths, writeJson } from "../../cli/lib/runs";
 import { serve } from "../../cli/lib/server";
-import { makeRepo, planFor, relatedRepo, stackRepo } from "../fixture";
+import { makeRepo, multiRepo, planFor, relatedRepo, stackRepo } from "../fixture";
 
 const appDir = join(__dirname, "../../dist/app");
 // Use a preinstalled Chromium when there is one; otherwise Playwright's own download (CI).
@@ -417,6 +417,45 @@ describe("review app", () => {
       await expect(readState(paths).then((st) => st.lineNotes.map((n) => [n.pr, n.text]))).resolves.toEqual([[3, "Why again?"]]);
       await sections.nth(1).getByRole("link", { name: "Across PRs" }).click();
       await expect.poll(() => page.locator(".steps .step.on").textContent()).toBe("3");
+    } finally {
+      await s.close();
+      rmSync(repo.dir, { recursive: true, force: true });
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("reviews related PRs from another repo next to this one's", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const repo = multiRepo();
+    const { paths } = await extractStack({ cwd: repo.root, forge: repo.forge, forgeFor: repo.forgeFor, fetchUrl: repo.fetchUrl, remote: "origin", start: 1, related: true });
+    const s = await serve({ paths, appDir, port: 0 });
+    try {
+      await page.goto(`${s.url}/#/review/4`);
+      const head = page.locator(".chunk-head");
+      await head.getByRole("heading", { name: /Other 4/ }).waitFor();
+      await expect(head.locator(".pr-link").allTextContents()).resolves.toEqual(["other/repo#4"]);
+      await page.goto(`${s.url}/#/review/5`);
+      await page.getByText("builds on other/repo#4").waitFor();
+
+      await page.goto(`${s.url}/#/review/4`);
+      const api = page.locator("details.file", { has: page.locator(".path", { hasText: "src/api.ts" }) });
+      await api.locator("tr.line.add td.no").first().click();
+      await page.getByPlaceholder(/Line note/).fill("Same name as o/r's?");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.locator(".saving", { hasText: "Saved" }).waitFor();
+      await expect(readState(paths).then((st) => st.lineNotes.map((n) => [n.pr, n.text]))).resolves.toEqual([["other/repo#4", "Same name as o/r's?"]]);
+      // Its files are read from other/repo's commits.
+      const client = page.locator("details.file", { has: page.locator(".path", { hasText: "src/client.ts" }) });
+      await client.getByRole("button", { name: "View file" }).click();
+      await client.getByRole("button", { name: "Diff only" }).waitFor();
+      await expect(client.getByText("Couldn't load the file.").count()).resolves.toBe(0);
+
+      // Across PRs shows other/repo's src/api.ts in other/repo#4 only.
+      await api.getByRole("link", { name: "Across PRs" }).click();
+      await expect.poll(() => page.getByLabel("File").inputValue()).toBe("other/repo:src/api.ts");
+      await expect(page.locator(".panel:not(.unchanged)").count()).resolves.toBe(1);
+      await expect(page.locator(".panel:not(.unchanged) .n").textContent()).resolves.toBe("PR other/repo#4");
     } finally {
       await s.close();
       rmSync(repo.dir, { recursive: true, force: true });

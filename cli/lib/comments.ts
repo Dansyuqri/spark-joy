@@ -1,6 +1,5 @@
-import { chunkNoteKey, notesInHunks, numberLines } from "../../shared/derive";
-import { prName } from "./forge";
-import type { Hunk, LineNote, Meta, Plan, ReviewState } from "../../shared/schema";
+import { chunkNoteKey, notesInHunks, numberLines, prKey, prRef } from "../../shared/derive";
+import type { Hunk, LineNote, Meta, Plan, PrKey, ReviewState } from "../../shared/schema";
 
 export interface ReviewComment {
   path: string;
@@ -90,6 +89,10 @@ type StackEntry = NonNullable<Meta["stack"]>["prs"][number];
 
 export interface StackTarget {
   number: number;
+  // Its key in the run, and for a related PR in another repo, that repo.
+  key: PrKey;
+  repo?: string;
+  host?: string;
   url: string;
   // The commit the PR's diff starts from and the commit it targets: the PR
   // below's head, or the base branch for the bottom one (for related PRs, the
@@ -105,40 +108,45 @@ export interface StackTarget {
 function collectStack(meta: Meta, hunks: readonly Hunk[], plan: Plan, state: ReviewState) {
   const stack = meta.stack;
   if (meta.source !== "stack" || !stack?.prs.length) throw new Error("this run is not a stack of PRs");
-  const name = (n: number) => prName(stack.forge, n);
+  const name = (k: PrKey) => `${stack.forge === "gitlab" ? "MR" : "PR"} ${prRef(meta, k)}`;
   const prs = stack.prs;
   const top = prs.at(-1)!;
-  const index = new Map(prs.map((p, i) => [p.number, i]));
+  const keys = prs.map((p) => prKey(stack.forge, p));
+  const index = new Map(keys.map((k, i) => [k, i]));
   const notes = state.lineNotes.filter((n) => n.text.trim());
   const chunks = chunkNotes(plan, state).map(({ chunk, note }) => {
     const ids = new Set(chunk.hunks);
     const touched = [...new Set(hunks.filter((h) => ids.has(h.id) || (h.parent && ids.has(h.parent))).map((h) => h.pr))]
-      .filter((n): n is number => n !== undefined && index.has(n))
+      .filter((n): n is PrKey => n !== undefined && index.has(n))
       .sort((a, b) => index.get(a)! - index.get(b)!);
-    const target = chunk.pr && index.has(chunk.pr.number) ? chunk.pr.number : (touched.at(-1) ?? top.number);
+    const target = chunk.pr && index.has(chunk.pr.number) ? chunk.pr.number : (touched.at(-1) ?? keys.at(-1)!);
     const title = !chunk.pr && touched.length > 1 ? `${chunk.title} (${touched.map(name).join(", ")})` : chunk.title;
     return { target, title, note };
   });
 
   return prs.flatMap((p: StackEntry, i): { target: StackTarget; collected: Collected }[] => {
     const below = prs[i - 1];
+    const key = keys[i]!;
     const target: StackTarget = {
       number: p.number,
+      key,
+      ...(p.repo && { repo: p.repo }),
+      ...(p.host && { host: p.host }),
       url: p.url,
       mergeBase: p.mergeBase,
       start: p.start ?? below?.headSha ?? meta.baseSha,
       headSha: p.headSha,
     };
     // Notes with no PR, or on a PR no longer in the stack, go to the top one.
-    const mine = notes.filter((n) => (n.pr !== undefined && index.has(n.pr) ? n.pr === p.number : p === top));
+    const mine = notes.filter((n) => (n.pr !== undefined && index.has(n.pr) ? n.pr === key : p === top));
     // A PR that doesn't target the one below was diffed against it anyway, so
     // its line numbers aren't the forge's; keep its notes out of the diff.
     // Related PRs are each diffed against what they target.
     const chained = stack.related || !below || p.base === below.head;
     const { placed, stray } = chained
-      ? place(hunks.filter((h) => h.pr === p.number), mine.map((n) => ({ ...n, pr: p.number })))
+      ? place(hunks.filter((h) => h.pr === key), mine.map((n) => ({ ...n, pr: key })))
       : { placed: [], stray: mine };
-    const body = bodyOf(chunks.filter((c) => c.target === p.number), stray);
+    const body = bodyOf(chunks.filter((c) => c.target === key), stray);
     return placed.length || body ? [{ target, collected: { placed, body } }] : [];
   });
 }

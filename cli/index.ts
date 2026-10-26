@@ -3,12 +3,12 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { defaultPrefix } from "../shared/derive";
-import { RUBRIC_FILE } from "../shared/schema";
+import { defaultPrefix, prKey, prRef } from "../shared/derive";
+import { RUBRIC_FILE, type PrKey } from "../shared/schema";
 import { validatePlan } from "../shared/validate";
-import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews, type DraftNote, type ReviewPayload } from "./lib/comments";
+import { gitlabDraftNotes, reviewPayload, stackDraftNotes, stackReviews, type DraftNote, type ReviewPayload, type StackTarget } from "./lib/comments";
 import { extract, extractStack } from "./lib/extract";
-import { cliForge, parsePrArg, parseRelated, parseRemote, prName, relatedLine, type Forge, type ForgeKind, type Remote } from "./lib/forge";
+import { cliForge, cloneUrl, parsePrArg, parsePrRef, parseRemote, refLabel, refName, relatedLine, relatedRefs, sameRepo, type Forge, type ForgeKind, type Remote } from "./lib/forge";
 import { exportMarkdown } from "./lib/export";
 import { describeMeta, expandIds, formatLinks, outline, showFile, showHunks } from "./lib/format";
 import * as g from "./lib/git";
@@ -39,9 +39,10 @@ Commands:
   related <pr>          Load a PR or MR and every one it relates to into one review, one chunk per PR.
                         Follows "Relates to #12" lines in descriptions, both ways and onward;
                         each PR is diffed against what it targets. Needs gh or glab, logged in
+                        PRs may be in other repos on the same forge: other/repo#4, or a URL
       --prs <a,b,c>     Exactly these PRs instead of following links
       --remote, --forge As for stack
-  link <pr> <prs...>    Add "Relates to #b, #c" to the first PR's description, so \`related\` finds them
+  link <pr> <prs...>    Add "Relates to #b, other/repo#c" to the first PR's description, so \`related\` finds them
       --remote, --forge As for stack
   status                Where the run stands and what to do next
   outline               Compact per-file, per-hunk overview of the diff
@@ -94,13 +95,13 @@ async function printNext(p: RunPaths, steps?: Step[]) {
   if (next.length) console.log(formatNext(next));
 }
 
-async function repoRemote(cwd: string, name: string | undefined, forge: string | undefined): Promise<{ remote: Remote; name: string }> {
+async function repoRemote(cwd: string, name: string | undefined, forge: string | undefined): Promise<{ remote: Remote; name: string; url: string }> {
   if (forge !== undefined && forge !== "github" && forge !== "gitlab") throw new Error("--forge must be github or gitlab");
   const root = await g.repoRoot(cwd);
   const remoteName = name ?? "origin";
   const url = (await g.git(root, ["remote", "get-url", remoteName]).catch(() => "")).trim();
   if (!url) throw new Error(`no remote named ${remoteName}; pass --remote`);
-  return { remote: parseRemote(url, forge as ForgeKind | undefined), name: remoteName };
+  return { remote: parseRemote(url, forge as ForgeKind | undefined), name: remoteName, url };
 }
 
 // Tests pass a fake forge; otherwise gh or glab is used.
@@ -172,16 +173,20 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
     case "stack":
     case "related": {
       const related = cmd === "related";
-      const { remote, name: remoteName } = await repoRemote(cwd, values.remote, values.forge);
-      const prs = values.prs?.split(",").filter((x) => x.trim()).map((x) => parsePrArg(x, remote));
+      const { remote, name: remoteName, url } = await repoRemote(cwd, values.remote, values.forge);
+      // Related PRs may be in other repos on the same forge.
+      const parse = (x: string) => (related ? parsePrRef(x, remote) : parsePrArg(x, remote));
+      const prs = values.prs?.split(",").filter((x) => x.trim()).map(parse);
       if (!prs?.length && !rest[0]) throw new Error(`pass a PR number or URL, e.g. \`spark-joy ${cmd} 12\`, or --prs 12,13,14`);
       const splitAt = values["split-at"] ? Number(values["split-at"]) : undefined;
       if (splitAt !== undefined && !(splitAt >= 40)) throw new Error("--split-at must be a number ≥ 40");
       const r = await extractStack({
         cwd,
         forge: makeForge(remote),
+        forgeFor: makeForge,
+        fetchUrl: (r) => cloneUrl(url, remote, r),
         remote: remoteName,
-        start: rest[0] ? parsePrArg(rest[0], remote) : undefined,
+        start: rest[0] ? parse(rest[0]) : undefined,
         prs,
         related,
         run: values.run,
@@ -189,9 +194,10 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
       });
       for (const w of r.warnings) console.log(`warn  ${w}`);
       r.meta.stack!.prs.forEach((p, i) => {
-        const hs = r.hunks.filter((h) => h.pr === p.number);
+        const key = prKey(remote.forge, p);
+        const hs = r.hunks.filter((h) => h.pr === key);
         const lines = hs.reduce((n, h) => n + h.added + h.removed, 0);
-        console.log(`${String(i + 1).padStart(2)}  ${prName(remote.forge, p.number)}  ${p.head} → ${p.base}  ${lines} lines  ${p.title}`);
+        console.log(`${String(i + 1).padStart(2)}  ${remote.forge === "gitlab" ? "MR" : "PR"} ${prRef(r.meta, key)}  ${p.head} → ${p.base}  ${lines} lines  ${p.title}`);
       });
       console.log(`wrote ${relative(cwd, r.paths.dir)}, with a plan of one chunk per ${remote.forge === "gitlab" ? "MR" : "PR"}`);
       await printNext(r.paths);
@@ -200,22 +206,28 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
 
     case "link": {
       const { remote } = await repoRemote(cwd, values.remote, values.forge);
-      const [n, ...others] = [...new Set(rest.map((x) => parsePrArg(x, remote)))];
-      if (n === undefined || !others.length)
-        throw new Error("pass a PR and the PRs it relates to, e.g. `spark-joy link 12 15 20`");
-      const forge = makeForge(remote);
+      const key = (r: { remote: Remote; number: number }) => `${r.remote.host}/${r.remote.path.toLowerCase()}#${r.number}`;
+      const refs = rest.map((x) => parsePrRef(x, remote)).filter((r, i, all) => all.findIndex((o) => key(o) === key(r)) === i);
+      const [first, ...others] = refs;
+      if (first === undefined || !others.length)
+        throw new Error("pass a PR and the PRs it relates to, e.g. `spark-joy link 12 15 other/repo#20`");
+      // The description edited is the first PR's, which may be in another repo.
+      const forge = makeForge(first.remote);
+      const home = first.remote;
+      const n = first.number;
       // Fetching each one checks it exists before anything is written.
-      const [pr] = await Promise.all([n, ...others].map((x) => forge.get(x)));
-      const have = parseRelated(pr!.body, remote).prs;
-      const add = others.filter((x) => !have.includes(x));
-      if (!add.length) console.log(`${prName(remote.forge, n)} already relates to ${others.map((x) => prName(remote.forge, x)).join(", ")}`);
+      const [pr] = await Promise.all(refs.map((r) => (sameRepo(r.remote, home) ? forge : makeForge(r.remote)).get(r.number)));
+      const have = new Set(relatedRefs(pr!.body, home).map(key));
+      const add = others.filter((r) => !have.has(key(r)));
+      const label = refLabel(remote, first);
+      if (!add.length) console.log(`${label} already relates to ${others.map((r) => refLabel(home, r)).join(", ")}`);
       else {
-        const line = relatedLine(remote.forge, add);
+        const line = relatedLine(home, add);
         const body = pr!.body.trimEnd();
         await forge.setBody(n, `${body}${body ? "\n\n" : ""}${line}\n`);
-        console.log(`${prName(remote.forge, n)}  added "${line}" to its description  ${pr!.url}`);
+        console.log(`${label}  added "${line}" to its description  ${pr!.url}`);
       }
-      console.log(formatNext([{ cmd: `related ${n}`, why: "load them all into one review" }]));
+      console.log(formatNext([{ cmd: `related ${refName(remote, first).replace(/^[#!]/, "")}`, why: "load them all into one review" }]));
       return 0;
     }
 
@@ -323,16 +335,23 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
         throw new Error("these notes were already posted; submit or delete that pending review on the forge first, then pass --force");
 
       // Each PR's notes, and where they go when posted.
-      let targets: (PostTarget & { url?: string; inline: number; general: boolean })[];
+      let targets: (PostTarget & { key?: PrKey; url?: string; inline: number; general: boolean })[];
       let remote: Remote;
       if (meta.source === "stack") {
         const st = meta.stack!;
         const forge = st.forge;
         if (values.gitlab && forge !== "gitlab") throw new Error("this stack is on GitHub; drop --gitlab");
         remote = { forge, host: st.host, path: st.repo };
+        const home = remote;
+        // A related PR in another repo is posted to there.
+        const where = (pr: StackTarget) => ({
+          key: pr.key,
+          ...(pr.repo && { remote: { forge, host: pr.host ?? home.host, path: pr.repo } }),
+        });
         targets =
           forge === "gitlab"
             ? stackDraftNotes(meta, hunks, result.plan, state).map(({ pr, notes }) => ({
+                ...where(pr),
                 number: pr.number,
                 url: pr.url,
                 headSha: pr.headSha,
@@ -343,6 +362,7 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
                 general: notes.some((n) => !n.position),
               }))
             : stackReviews(meta, hunks, result.plan, state).map(({ pr, review }) => ({
+                ...where(pr),
                 number: pr.number,
                 url: pr.url,
                 headSha: pr.headSha,
@@ -363,13 +383,13 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
         targets = inline || general ? [{ number: 0, headSha: meta.headSha, base: meta.mergeBase, start: meta.baseSha, body, inline, general }] : [];
       }
       if (!targets.length) throw new Error("no notes yet; leave notes in the review app first");
-      const forgeName = (n: number) => (n ? prName(remote.forge, n) : "");
+      const forgeName = (t: (typeof targets)[number]) => (t.key !== undefined ? `${remote.forge === "gitlab" ? "MR" : "PR"} ${prRef(meta, t.key)}` : "");
       const what = (t: (typeof targets)[number]) =>
         `${t.inline} inline comment(s)${t.general ? `, plus notes in the ${remote.forge === "gitlab" ? "first draft note" : "review body"}` : ""} on ${t.headSha.slice(0, 7)}`;
 
       if (values.stdout) {
         if (meta.source === "stack")
-          process.stdout.write(JSON.stringify(targets.map((t) => ({ number: t.number, url: t.url, [remote.forge === "gitlab" ? "notes" : "review"]: t.body })), null, 2) + "\n");
+          process.stdout.write(JSON.stringify(targets.map((t) => ({ number: t.number, ...(t.remote && { repo: t.remote.path }), url: t.url, [remote.forge === "gitlab" ? "notes" : "review"]: t.body })), null, 2) + "\n");
         else process.stdout.write(JSON.stringify(targets[0]!.body, null, 2) + "\n");
         return 0;
       }
@@ -388,20 +408,20 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
           }
           targets[0]!.number = n;
         }
-        const posted = await postNotes(makeForge(remote), targets);
-        for (const x of posted) console.log(`${prName(remote.forge, x.number)}  posted ${x.count} pending ${remote.forge === "gitlab" ? "draft note(s)" : "comment(s)"}  ${x.url}`);
-        await writeJson(postedPath(p), { at: new Date().toISOString(), prs: posted.map((x) => x.number) });
+        const posted = await postNotes(makeForge(remote), targets, makeForge);
+        for (const x of posted) console.log(`${x.label}  posted ${x.count} pending ${remote.forge === "gitlab" ? "draft note(s)" : "comment(s)"}  ${x.url}`);
+        await writeJson(postedPath(p), { at: new Date().toISOString(), prs: targets.map((t) => t.key ?? t.number) });
         console.log(`only you see them until you submit your review on ${remote.forge === "gitlab" ? "GitLab" : "GitHub"}`);
         return 0;
       }
 
       if (meta.source === "stack") {
         // Files from an earlier run may name PRs that have no notes now.
-        for (const f of await readdir(p.dir)) if (/^comments-\d+\.json$/.test(f)) await rm(join(p.dir, f));
+        for (const f of await readdir(p.dir)) if (/^comments-.+\.json$/.test(f)) await rm(join(p.dir, f));
         for (const t of targets) {
-          const file = stackCommentsPath(p, t.number);
+          const file = stackCommentsPath(p, t.key ?? t.number);
           await writeFile(file, JSON.stringify(t.body, null, 2) + "\n");
-          console.log(`${forgeName(t.number)}  ${what(t)}  wrote ${relative(cwd, file)}`);
+          console.log(`${forgeName(t)}  ${what(t)}  wrote ${relative(cwd, file)}`);
         }
       } else {
         await writeFile(p.comments, JSON.stringify(targets[0]!.body, null, 2) + "\n");

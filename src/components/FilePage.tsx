@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { branchName, defaultPrefix, fileSteps, hunkStatus, numberLines, prRef, stackView, unitName, viewFiles, type FileStep, type StrategyView } from "../../shared/derive";
-import type { Plan, ReviewState } from "../../shared/schema";
+import type { Plan, PrKey, ReviewState } from "../../shared/schema";
 import type { RunData } from "../api";
 import { routeHref } from "../App";
 import { StatusIcon, plural } from "./bits";
@@ -14,7 +14,7 @@ interface Props {
   // Chunk to start on, usually the one the reader came from.
   at?: number | "skim";
   // Stack mode: the PR to start on, when that chunk spans several.
-  pr?: number;
+  pr?: PrKey;
 }
 
 // One file's diff in each chunk side by side, so the reader can follow how it
@@ -97,11 +97,13 @@ export function FilePage({ data, plan, view, state, path, at, pr }: Props) {
     return before ? `Same as after ${name(before)}.` : "Same as on the base branch.";
   };
   const back = steps[focus]?.at ?? at ?? 0;
+  // The path in its repo, which the review page goes by.
+  const file = touched[0]?.hunks[0]?.file ?? path;
 
   return (
     <main className="page across">
       <header className="across-head">
-        <a href={routeHref({ page: "review", chunk: back, file: path })}>← Review</a>
+        <a href={routeHref({ page: "review", chunk: back, file })}>← Review</a>
         <select
           aria-label="File"
           value={path}
@@ -133,7 +135,7 @@ export function FilePage({ data, plan, view, state, path, at, pr }: Props) {
             title={`${name(s)}${s.chunk ? `: ${s.chunk.title}` : ""}${s.hunks.length ? "" : " (no changes)"}`}
             onClick={() => show(i)}
           >
-            {s.at === "skim" ? "~" : prs ? i + 1 : s.at + 1}
+            {s.at === "skim" ? "~" : prs ? prs.chunks.findIndex((c) => c.chunk.id === s.chunk?.id) + 1 : s.at + 1}
           </button>
         ))}
         <button aria-label="Next" disabled={focus >= steps.length - 1} onClick={() => show(focus + 1)}>
@@ -172,7 +174,7 @@ export function FilePage({ data, plan, view, state, path, at, pr }: Props) {
                       <span className="counts">
                         <span className="add">+{added}</span> <span className="del">−{removed}</span>
                       </span>
-                      <a href={routeHref({ page: "review", chunk: s.at, file: path })}>Open in review</a>
+                      <a href={routeHref({ page: "review", chunk: s.at, file })}>Open in review</a>
                     </>
                   )}
                 </div>

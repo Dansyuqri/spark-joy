@@ -188,19 +188,23 @@ spark-joy serve --run pr-12-stack
 
 ## Review related PRs
 
-Some changes span PRs that aren't a stack: an API and the client that uses it, each on `main`, or a fix and its follow-up. Link them in a description and review them in one place, one chunk per PR, with **Across PRs** showing a file in each PR that touches it.
+Some changes span PRs that aren't a stack: an API and the client that uses it, each on `main`, or a fix and its follow-up, in one repo or across several. Link them in a description and review them in one place, one chunk per PR, with **Across PRs** showing a file in each PR that touches it.
 
 ```sh
 spark-joy related 12                # or a PR/MR URL
 spark-joy related --prs 12,15,20    # exactly these, no links needed
 spark-joy link 12 15 20             # adds "Relates to #15, #20" to #12's description
+spark-joy link 12 acme/web#7        # a PR in another repo
 spark-joy serve --run pr-12-related
 ```
 
-- It follows `Relates to #15` lines (also `Related:`, `Related PRs:`, PR URLs, and `!15` on GitLab) from PR to PR, and finds open PRs that link back. One link anywhere connects two PRs. Links to other repos are listed but not loaded.
+- It follows `Relates to #15` lines (also `Related:`, `Related PRs:`, PR URLs, and `!15` on GitLab) from PR to PR, and finds open PRs that link back. One link anywhere connects two PRs.
+- **Across repos.** Links may name PRs in other repos on the same GitHub or GitLab: `acme/web#7`, `group/api!3`, or a PR URL. `related` loads those too, and searches each repo it reaches for PRs that link back, so a change that spans a multi-repo system reviews as one. Their commits are fetched into your clone (the same way as your remote, so ssh stays ssh) and they show as `acme/web#7`. Across PRs keeps files apart by repo (`acme/web:package.json`), and notes post to the PR in its own repo. A run starts from any of them: `spark-joy related acme/web#7`.
 - Each PR is diffed against what it targets: its base branch, or, when it's based on another PR in the run, that PR. The review page says which ("targets main", "builds on #12").
 - Your agent then reads all the PRs together and adds *Foundations first across PRs* and *By feature across PRs* orders: one chunk can gather the foundations, or one feature, from every PR it touches. Each file shows once per PR, tagged `#12`, `#15`, and every note keeps the PR it was left on. *Whole PRs* stays one chunk per PR.
 - `comments --post` sends each note to the PR it was left on, inline on that PR's own lines. A note on a chunk that spans PRs goes to the highest one and names the others.
+
+<p align="center"><img src="assets/related-across-repos.gif" width="800" alt="Linking an acme/api PR to an acme/web PR, loading both repos' PRs into one review, grouping them across PRs, and seeing each repo's package.json apart"></p>
 
 ## Develop
 

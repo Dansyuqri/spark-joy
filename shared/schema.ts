@@ -14,6 +14,11 @@ export type HunkFlag = z.infer<typeof HunkFlag>;
 export const FileStatus = z.enum(["added", "deleted", "modified", "renamed", "copied"]);
 export type FileStatus = z.infer<typeof FileStatus>;
 
+// A PR in a run of existing PRs: its number, or for a related PR in another
+// repo, how that repo would name it ("other/repo#4", "host/other/repo#4").
+export const PrKey = z.union([z.number().int(), z.string().min(1)]);
+export type PrKey = z.infer<typeof PrKey>;
+
 export const Hunk = z.object({
   id: z.string(),
   file: z.string(),
@@ -37,7 +42,7 @@ export const Hunk = z.object({
   // Stack runs: the number of the PR or MR this hunk is from. Each PR is
   // diffed against the one below it (or, for related PRs, what it targets),
   // so hunks are only comparable within one.
-  pr: z.number().int().optional(),
+  pr: PrKey.optional(),
 });
 export type Hunk = z.infer<typeof Hunk>;
 
@@ -76,6 +81,10 @@ export const Meta = z.object({
           // The commit the PR's diff is shown against: the PR it builds on,
           // or its base branch.
           start: z.string().optional(),
+          // Related PRs in another repo on the same forge: its path, and its
+          // host when that differs too. Its commits are fetched into this clone.
+          repo: z.string().optional(),
+          host: z.string().optional(),
         }),
       ),
     })
@@ -106,8 +115,8 @@ export const Chunk = z.object({
   riskReason: z.string().min(1).optional(),
   // Split mode: the branch this chunk becomes.
   branch: z.string().min(1).optional(),
-  // Stack mode: the PR or MR this chunk is.
-  pr: z.object({ number: z.number().int(), url: z.string() }).optional(),
+  // Stack mode: the PR or MR this chunk is. `number` is its key in the run.
+  pr: z.object({ number: PrKey, url: z.string() }).optional(),
 });
 export type Chunk = z.infer<typeof Chunk>;
 
@@ -161,7 +170,7 @@ export const LineNote = z.object({
   side: z.enum(["old", "new"]),
   line: z.number().int(),
   // Stack runs: the PR the note was left on, since a line differs between PRs.
-  pr: z.number().int().optional(),
+  pr: PrKey.optional(),
   text: z.string(),
   at: z.string(),
 });

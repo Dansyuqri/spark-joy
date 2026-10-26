@@ -1,7 +1,7 @@
 import { Fragment, useState, type ReactNode, type SyntheticEvent } from "react";
-import { fileSegments, numberLines, type FileSegment, type NumberedLine } from "../../shared/derive";
+import { fileIn, fileSegments, numberLines, type FileSegment, type NumberedLine } from "../../shared/derive";
 import type { FileLinks, LinkTarget, RelatedFile } from "../../shared/graph";
-import type { Hunk, LineNote } from "../../shared/schema";
+import type { Hunk, LineNote, PrKey } from "../../shared/schema";
 import { loadFile } from "../api";
 import { routeHref } from "../App";
 
@@ -28,12 +28,12 @@ interface Props {
   // What a chunk is called ("PR" in split mode), for the link to the file across chunks.
   unit?: string;
   // Stack mode: names a PR, e.g. "#12", for files of a chunk that spans PRs.
-  prLabel?: (n: number) => string;
+  prLabel?: (n: PrKey) => string;
 }
 
 // In a stack, `pr` says which PR's version of the file the line is in.
-type Anchor = { file: string; side: "old" | "new"; line: number; pr?: number };
-const anchorOf = (file: string, l: NumberedLine, pr: number | undefined): Anchor | undefined => {
+type Anchor = { file: string; side: "old" | "new"; line: number; pr?: PrKey };
+const anchorOf = (file: string, l: NumberedLine, pr: PrKey | undefined): Anchor | undefined => {
   const at = l.kind === "del" ? { side: "old" as const, line: l.oldNo! } : l.newNo !== undefined ? { side: "new" as const, line: l.newNo } : undefined;
   return at && { file, ...at, ...(pr !== undefined ? { pr } : {}) };
 };
@@ -263,7 +263,7 @@ export function DiffView({ hunks, allHunks, chunkOf, related, symbols, notes, on
               )}
               <a
                 className="across-link"
-                href={routeHref({ page: "file", path: file, chunk: chunkOf.get(first.id) ?? "skim", ...(mixed && first.pr !== undefined ? { pr: first.pr } : {}) })}
+                href={routeHref({ page: "file", path: fileIn(first), chunk: chunkOf.get(first.id) ?? "skim", ...(mixed && first.pr !== undefined ? { pr: first.pr } : {}) })}
                 title={`This file's changes in every ${unit}, side by side`}
                 onClick={(e) => e.stopPropagation()}
               >
