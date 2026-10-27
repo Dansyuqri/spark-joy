@@ -216,3 +216,14 @@ export function parseRubric(text: string): Rubric | undefined {
   }
   return rubric.high.length || rubric.med.length ? rubric : undefined;
 }
+
+// What the home page shows for each run being served.
+export interface RunSummary {
+  id: string;
+  run: string;
+  repo: string;
+  title: string;
+  source?: string;
+  reviewed: number;
+  hunks: number;
+}

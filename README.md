@@ -62,6 +62,7 @@ More in [Review related PRs](#review-related-prs).
 - **Progress survives new commits.** Review state is stored by hunk content, so after a push you re-extract and only new or changed hunks need another look.
 - **Linked code.** Under each file, **Uses** and **Used by** list the other changed files it's linked to; click an underlined name to jump to its definition.
 - **Agent or terminal.** Your agent can drive every step, or run any `spark-joy` command yourself. See [Agent or terminal](#agent-or-terminal).
+- **Every run on one page.** Each `spark-joy serve`, from any repo, joins the app already running on http://127.0.0.1:4848, whose home page lists every run being served. Stop the terminal that started it and another one takes over, so links keep working.
 - **Signed commits.** Split branches are signed if your git config has `commit.gpgsign` on.
 - **Any agent.** An [Agent Skill](https://agentskills.io) plus a CLI, so it works with Claude Code, Codex, Gemini CLI, Cursor, OpenCode and others.
 
@@ -101,7 +102,7 @@ In Claude Code you can install it as a plugin instead:
 
 ## Use
 
-Inside the repo with the branch checked out, ask your agent to "review this PR in chunks" (in Claude Code, `/spark-joy` also works). The agent extracts the diff, reads it, writes and validates the plan, and starts the app at http://127.0.0.1:4848.
+Inside the repo with the branch checked out, ask your agent to "review this PR in chunks" (in Claude Code, `/spark-joy` also works). The agent extracts the diff, reads it, writes and validates the plan, and starts the app at http://127.0.0.1:4848. Each run gets its own page below `/r/<repo>/<run>/`; click **spark-joy** in the top bar to see every run being served.
 
 In the app:
 
@@ -138,7 +139,7 @@ Every command ends with a `next:` line saying what comes next: a command to run,
 | `spark-joy links` | Cross-file links: which hunk uses a name another defines |
 | `spark-joy rubric` | Print the agreed risk rubric from `.spark-joy.md` |
 | `spark-joy validate [--json]` | Check `plan.json` against the hunks |
-| `spark-joy serve [--port n]` | Start the review app |
+| `spark-joy serve [--port n]` | Start the review app, or add the run to the one already running on that port |
 | `spark-joy export [--stdout]` | Write `review.md` |
 | `spark-joy comments [--gitlab] [--stdout]` | Write `comments.json`: your notes as a pending GitHub review or GitLab draft notes; one file per PR for a stack |
 | `spark-joy comments --post [--pr n]` | Post them through `gh` or `glab`, pending until you submit |
@@ -214,7 +215,7 @@ npm run build        # CLI (tsup) and app (Vite)
 npm test             # unit and integration tests
 npm run test:e2e     # browser walkthrough of the app (Playwright + Chromium)
 npm run typecheck
-npm run dev:app      # Vite dev server; proxies /api to a running `spark-joy serve`
+npm run dev:app      # Vite dev server; proxies the API to a running `spark-joy serve`
 ```
 
 Layout:
