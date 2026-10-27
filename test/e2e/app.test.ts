@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { extract, extractStack } from "../../cli/lib/extract";
 import { readPlanRaw, readState, runPaths, writeJson } from "../../cli/lib/runs";
+import { joinHub } from "../../cli/lib/hub";
 import { serve } from "../../cli/lib/server";
 import { makeRepo, multiRepo, planFor, relatedRepo, stackRepo } from "../fixture";
 
@@ -459,6 +460,32 @@ describe("review app", () => {
     } finally {
       await s.close();
       rmSync(repo.dir, { recursive: true, force: true });
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("lists every run being served, from any repo, on one page", async () => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const other = makeRepo();
+    const { paths } = await extract({ cwd: other, base: "main", run: "other-run" });
+    const joined = await joinHub({ paths, appDir, port: Number(new URL(server.url).port) });
+    try {
+      expect(joined.hub).toBe(false);
+      await page.goto(server.url);
+      await page.locator(".brand").click();
+      await page.locator(".runs li").nth(1).waitFor();
+      await expect(page.locator(".topbar .run").textContent()).resolves.toBe("2 runs being served across 2 repos");
+      await page.locator(".runs a", { hasText: "other-run" }).click();
+      await page.waitForURL((u) => u.pathname === new URL(joined.url).pathname + "/");
+      await page.locator(".tabs").waitFor();
+
+      await joined.close();
+      await page.goto(new URL(server.url).origin);
+      await expect.poll(() => page.locator(".runs li").count()).toBe(1);
+    } finally {
+      await joined.close();
+      rmSync(other, { recursive: true, force: true });
     }
     expect(errors).toEqual([]);
   });

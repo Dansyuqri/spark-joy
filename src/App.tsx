@@ -151,9 +151,9 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
+        <a className="brand" href="../../../" title="Every run being served">
           <span className="spark">✦</span> spark-joy
-        </div>
+        </a>
         <div
           className="run"
           title={`${meta.base} → ${headLabel(meta)} · +${meta.stats.added} −${meta.stats.removed} · ${meta.stats.files} files`}

@@ -1,5 +1,5 @@
 import type { Issue } from "../shared/validate";
-import type { AutoLink, Hunk, Meta, Plan, PrKey, ReviewState, Rubric } from "../shared/schema";
+import type { AutoLink, Hunk, Meta, Plan, PrKey, ReviewState, Rubric, RunSummary } from "../shared/schema";
 
 export interface RunData {
   meta: Meta;
@@ -28,3 +28,4 @@ export const saveState = (state: ReviewState) => call<ReviewState>("PUT", "api/s
 export const exportReview = () => call<{ path: string; markdown: string }>("POST", "api/export");
 export const loadFile = (path: string, pr?: PrKey) =>
   call<{ lines: string[] }>("GET", `api/file?path=${encodeURIComponent(path)}${pr === undefined ? "" : `&pr=${encodeURIComponent(pr)}`}`);
+export const loadRuns = () => call<RunSummary[]>("GET", "api/runs");

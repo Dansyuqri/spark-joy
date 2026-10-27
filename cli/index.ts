@@ -16,7 +16,7 @@ import { formatNext, postedPath, runStatus, type Step } from "./lib/next";
 import { postNotes, type PostTarget } from "./lib/post";
 import { readHunks, readLinks, readMeta, readPlanRaw, readState, resolveRun, stackCommentsPath, writeJson, type RunPaths } from "./lib/runs";
 import { formatRubric, readRubric } from "./lib/rubric";
-import { serve } from "./lib/server";
+import { joinHub } from "./lib/hub";
 import { buildStack, checkStack, createBranches, prsMarkdown } from "./lib/stack";
 
 const PKG_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -52,8 +52,8 @@ Commands:
   rubric                Print the agreed risk rubric (.spark-joy.md at the repo root)
   validate              Check plan.json against the hunks
       --json            Machine-readable output
-  serve                 Open the review app
-      --port <n>        Port to listen on (default 4848)
+  serve                 Open the review app; every run served, from any repo, shares one app
+      --port <n>        Port to listen on, or join the app already on it (default 4848)
   export                Write review.md with progress, notes and the feature summary
       --stdout          Print instead of writing the file
   comments              Write comments.json: your notes as a pending GitHub review, word for word.
@@ -290,8 +290,14 @@ export async function main(argv: string[], cwd = process.cwd(), deps: Deps = {})
     case "serve": {
       const p = await run(cwd, values.run);
       const port = values.port ? Number(values.port) : 4848;
-      const s = await serve({ paths: p, appDir: join(PKG_ROOT, "dist", "app"), port });
-      console.log(`spark-joy reviewing ${p.name} at ${s.url}  (Ctrl+C to stop)`);
+      const s = await joinHub({
+        paths: p,
+        appDir: join(PKG_ROOT, "dist", "app"),
+        port,
+        onChange: ({ hub, home }) => hub && console.log(`the terminal running the app stopped; this one runs it now at ${home}`),
+      });
+      console.log(`spark-joy reviewing ${p.name} at ${s.url}/  (Ctrl+C to stop)`);
+      console.log(s.hub ? `every run you serve shows at ${s.home}` : `joined the app already running; every run shows at ${s.home}`);
       const plan = await readPlanRaw(p).catch(() => undefined);
       const mode = (plan as { mode?: string } | undefined)?.mode;
       const source = (await readMeta(p)).source;
