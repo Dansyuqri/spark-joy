@@ -23,8 +23,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
-export const loadRun = () => call<RunData>("GET", "/api/run");
-export const saveState = (state: ReviewState) => call<ReviewState>("PUT", "/api/state", state);
-export const exportReview = () => call<{ path: string; markdown: string }>("POST", "/api/export");
+export const loadRun = () => call<RunData>("GET", "api/run");
+export const saveState = (state: ReviewState) => call<ReviewState>("PUT", "api/state", state);
+export const exportReview = () => call<{ path: string; markdown: string }>("POST", "api/export");
 export const loadFile = (path: string, pr?: PrKey) =>
-  call<{ lines: string[] }>("GET", `/api/file?path=${encodeURIComponent(path)}${pr === undefined ? "" : `&pr=${encodeURIComponent(pr)}`}`);
+  call<{ lines: string[] }>("GET", `api/file?path=${encodeURIComponent(path)}${pr === undefined ? "" : `&pr=${encodeURIComponent(pr)}`}`);

@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { parsePrKey } from "../../shared/derive";
@@ -61,6 +61,84 @@ async function loadRun(paths: RunPaths) {
   };
 }
 
+// The API for one run: the status and body to send, or undefined when `path`
+// (the request path below the run, e.g. "/api/run") isn't part of it.
+async function runApi(paths: RunPaths, req: IncomingMessage, path: string, query: URLSearchParams): Promise<[number, unknown] | undefined> {
+  if (path === "/api/run" && req.method === "GET") return [200, await loadRun(paths)];
+
+  // Full text of a changed file, so the app can expand context. Only files
+  // in the diff, so this can't read anything else on disk.
+  if (path === "/api/file" && req.method === "GET") {
+    const file = query.get("path") ?? "";
+    // Stack runs: which PR's version of the file.
+    const pr = parsePrKey(query.get("pr"));
+    const [meta, hunks] = await Promise.all([readMeta(paths), readHunks(paths)]);
+    const hs = hunks.filter((h) => h.file === file && (pr === undefined || h.pr === pr));
+    if (!hs.length || hs[0]!.status === "deleted" || hs.some((h) => h.flags.includes("binary")))
+      return [404, { error: "no text for that file" }];
+    const text = await fileText(meta.repoRoot, meta, file, pr).catch(() => undefined);
+    if (text === undefined) return [404, { error: "no text for that file" }];
+    if (text.length > MAX_FILE || text.includes("\0")) return [404, { error: "file too large or binary" }];
+    const lines = text.split("\n");
+    if (lines.at(-1) === "") lines.pop();
+    return [200, { lines: lines.map((l) => l.replace(/\r$/, "")) }];
+  }
+
+  if (path === "/api/state" && req.method === "PUT") {
+    const state = ReviewState.parse(await body(req));
+    state.updatedAt = new Date().toISOString();
+    await writeJson(paths.state, state);
+    return [200, state];
+  }
+
+  if (path === "/api/export" && req.method === "POST") {
+    const run = await loadRun(paths);
+    if (!run.plan) return [409, { error: "no valid plan to export" }];
+    const markdown = exportMarkdown(run.meta, run.hunks, run.plan, run.state);
+    await writeFile(paths.review, markdown);
+    return [200, { path: paths.review, markdown }];
+  }
+
+  return undefined;
+}
+
+// Static app files, falling back to index.html for client-side routes.
+async function serveApp(appDir: string, res: ServerResponse, path: string) {
+  const rel = normalize(decodeURIComponent(path)).replace(/^([/\\])+/, "");
+  let file = join(appDir, rel);
+  if (!file.startsWith(appDir + sep) && file !== appDir) return send(res, 403, { error: "forbidden" });
+  let data: Buffer;
+  try {
+    data = await readFile(file);
+  } catch {
+    file = join(appDir, "index.html");
+    data = await readFile(file);
+  }
+  res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
+  res.end(data);
+}
+
+// Listen on `port`, or the next free one after it. Resolves to the port taken.
+async function listen(server: Server, host: string, port: number): Promise<number> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port, host, () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE" || attempt >= 20) throw e;
+      port++;
+    }
+  }
+  const address = server.address();
+  return address && typeof address === "object" ? address.port : port;
+}
+
 export interface ServeOptions {
   paths: RunPaths;
   appDir: string;
@@ -85,79 +163,17 @@ export async function serve(opts: ServeOptions): Promise<{ url: string; close: (
         return send(res, 403, { error: "cross-origin request refused" });
       }
 
-      if (url.pathname === "/api/run" && req.method === "GET") return send(res, 200, await loadRun(paths));
-
-      // Full text of a changed file, so the app can expand context. Only files
-      // in the diff, so this can't read anything else on disk.
-      if (url.pathname === "/api/file" && req.method === "GET") {
-        const path = url.searchParams.get("path") ?? "";
-        // Stack runs: which PR's version of the file.
-        const pr = parsePrKey(url.searchParams.get("pr"));
-        const [meta, hunks] = await Promise.all([readMeta(paths), readHunks(paths)]);
-        const hs = hunks.filter((h) => h.file === path && (pr === undefined || h.pr === pr));
-        if (!hs.length || hs[0]!.status === "deleted" || hs.some((h) => h.flags.includes("binary")))
-          return send(res, 404, { error: "no text for that file" });
-        const text = await fileText(meta.repoRoot, meta, path, pr).catch(() => undefined);
-        if (text === undefined) return send(res, 404, { error: "no text for that file" });
-        if (text.length > MAX_FILE || text.includes("\0")) return send(res, 404, { error: "file too large or binary" });
-        const lines = text.split("\n");
-        if (lines.at(-1) === "") lines.pop();
-        return send(res, 200, { lines: lines.map((l) => l.replace(/\r$/, "")) });
-      }
-
-      if (url.pathname === "/api/state" && req.method === "PUT") {
-        const state = ReviewState.parse(await body(req));
-        state.updatedAt = new Date().toISOString();
-        await writeJson(paths.state, state);
-        return send(res, 200, state);
-      }
-
-      if (url.pathname === "/api/export" && req.method === "POST") {
-        const run = await loadRun(paths);
-        if (!run.plan) return send(res, 409, { error: "no valid plan to export" });
-        const markdown = exportMarkdown(run.meta, run.hunks, run.plan, run.state);
-        await writeFile(paths.review, markdown);
-        return send(res, 200, { path: paths.review, markdown });
-      }
-
+      const api = await runApi(paths, req, url.pathname, url.searchParams);
+      if (api) return send(res, ...api);
       if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "not found" });
       if (req.method !== "GET") return send(res, 405, { error: "method not allowed" });
-
-      // Static app files, falling back to index.html for client-side routes.
-      const rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, "");
-      let file = join(appDir, rel);
-      if (!file.startsWith(appDir + sep) && file !== appDir) return send(res, 403, { error: "forbidden" });
-      let data: Buffer;
-      try {
-        data = await readFile(file);
-      } catch {
-        file = join(appDir, "index.html");
-        data = await readFile(file);
-      }
-      res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
-      res.end(data);
+      await serveApp(appDir, res, url.pathname);
     } catch (e) {
       send(res, 400, { error: (e as Error).message });
     }
   });
 
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(port, host, () => {
-          server.off("error", reject);
-          resolve();
-        });
-      });
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE" || attempt >= 20) throw e;
-      port++;
-    }
-  }
-  const address = server.address();
-  if (address && typeof address === "object") port = address.port;
+  port = await listen(server, host, port);
   return {
     url: `http://${host}:${port}`,
     close: () => new Promise((r) => server.close(() => r())),
