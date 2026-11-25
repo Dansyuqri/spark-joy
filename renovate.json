@@ -3,13 +3,23 @@
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
   "schedule": ["before 9am on monday"],
   "minimumReleaseAge": "7 days",
-  "lockFileMaintenance": { "enabled": true, "schedule": ["before 9am on the first day of the month"] },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 9am on the first day of the month"],
+    "automerge": true
+  },
   "packageRules": [
     {
       "description": "Build and test tools: one weekly PR, merged after green CI",
       "matchDepTypes": ["devDependencies"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "dev dependencies (non-major)",
+      "automerge": true
+    },
+    {
+      "description": "Runtime dependencies: minor and patch merged after green CI; majors stay manual",
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": true
     },
     {
